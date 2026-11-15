@@ -12,7 +12,7 @@
 | 열람·다운로드 | 서버가 권한을 확인한 뒤 짧게 만료되는 presigned GET URL을 준다 | #98 |
 | 위치 | `global`에 공용 컴포넌트 하나. 허용 형식·최대 크기는 호출하는 도메인이 넘긴다 | #98 |
 | 신분 확인 서류 | pdf·jpg, 최대 10MB, 1개. 승인·반려 후 바로 삭제. 열람 URL 만료 5분 | [wireframe-spec.md](wireframe-spec.md) 1번, [student-verification-architecture.md](student-verification-architecture.md) |
-| 수명주기 규칙 | 쓰지 않는다. 관리자가 확인하기 전에 서류가 자동으로 지워지면 안 된다 | 2026-11-15 |
+| 수명주기 규칙 | `verification/`은 업로드 30일 뒤 자동 삭제. 검토(보통 1~2일)에 충분하고, 지우지 못한 서류가 남지 않게 한다 | 2026-11-15 |
 | 성적 인증 | 범위에서 제외 | 2026-11-15 |
 | 강의 자료 첨부 | 강의평이 아니라 `Material`(학습자료 탭)에 붙인다 | [wireframe-spec.md](wireframe-spec.md) 10번 |
 
@@ -77,8 +77,7 @@ AGENTS.md 설정값 체크리스트 4곳 + `application-test.properties`(가짜 
 ### 트랜잭션
 S3는 DB 트랜잭션에 묶이지 않는다.
 - 업로드 성공 후 DB 저장이 실패하면 S3에 파일만 남는다 → 실패 시 방금 올린 파일을 지운다
-- DB 처리 뒤 S3 삭제가 실패하면 파일만 남는다 → 처리는 되돌리지 않고 key를 에러 로그로 남겨 수동으로 지운다
-  - 수명주기 규칙(일정 기간 뒤 자동 삭제)은 쓰지 않는다. 관리자가 늦게 확인하면 처리 전 서류가 먼저 지워지기 때문이다
+- DB 처리 뒤 S3 삭제가 실패하면 파일만 남는다 → 처리는 되돌리지 않고 key를 에러 로그로 남긴다. `verification/`은 수명주기 규칙(30일)이 한 번 더 지운다
 
 ## 진행 상태
 
@@ -111,8 +110,7 @@ S3는 DB 트랜잭션에 묶이지 않는다.
   - Learner Lab 웹 터미널의 CLI는 Lab 계정이 아닌 `runserver` 역할로 실행돼 S3 권한이 없다. 버킷은 콘솔(`AWS ●`)에서 만든다
   - 로컬 키는 `AWS Details` → AWS CLI `Show` 블록을 `~/.aws/credentials`에 넣는다. `Start Lab`마다 바뀐다
 - [x] 버킷 생성(퍼블릭 액세스 차단 유지)
-- [x] `verification/` 수명주기 규칙 (`verification-cleanup`, 30일) 생성까지 연습함
-- [ ] 콘솔에서 `verification-cleanup` 규칙 삭제 (버킷 → 관리 → 수명 주기 규칙). 수명주기 규칙을 쓰지 않기로 결정했다 (2026-11-15, "결정된 것" 참고)
+- [x] `verification/` 수명주기 규칙 (`verification-cleanup`, 업로드 30일 뒤 만료)
 - [x] 로컬에서 임시 키로 업로드·presigned URL·삭제 확인 (가짜 파일만, `S3_TEST_BUCKET`을 주고 `S3RealBucketTest` 실행해 통과)
 
 ## 결정이 필요한 것
