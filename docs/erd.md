@@ -68,6 +68,8 @@ erDiagram
         varchar PASSWORD_RESET_CODE_HASH "비밀번호 찾기 코드"
         varchar EMAIL_CHANGE_CODE_HASH "이메일 변경 코드"
         varchar PENDING_EMAIL "변경 대기 이메일"
+        enum VERIFICATION_STATUS "PENDING/APPROVED/REJECTED"
+        varchar VERIFICATION_DOCUMENT_KEY "재학 증빙 서류 S3 key"
     }
     PROFESSOR {
         bigint PROFESSOR_ID PK
@@ -186,6 +188,8 @@ erDiagram
 | `EMAIL_CHANGE_CODE_EXPIRES_AT` | DATETIME | | |
 | `EMAIL_CHANGE_CODE_FAILED_ATTEMPTS` | INT | | |
 | `PENDING_EMAIL` | VARCHAR(100) | | 인증코드를 발송한 "새 이메일". 코드 검증 후 변경 요청의 이메일과 같아야 확정됨 |
+| `VERIFICATION_STATUS` | ENUM | NN | 재학생 인증 상태 `PENDING` / `APPROVED` / `REJECTED`. 새 가입은 `PENDING`. **기본값 `APPROVED`** — 이 컬럼 전에 가입한 계정은 서류가 없어서 승인 상태로 둔다 (#142) |
+| `VERIFICATION_DOCUMENT_KEY` | VARCHAR(100) | | 재학 증빙 서류의 S3 key (`verification/{UUID}.pdf`). URL이 아니라 key를 저장하고 열 때 presigned URL을 만든다. 기존 계정은 null |
 | `CREATED_AT` | DATETIME(6) | NN | 자동 |
 | `UPDATED_AT` | DATETIME(6) | NN | 자동 |
 

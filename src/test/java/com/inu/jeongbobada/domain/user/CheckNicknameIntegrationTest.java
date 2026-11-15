@@ -1,19 +1,19 @@
 package com.inu.jeongbobada.domain.user;
 
 import com.inu.jeongbobada.domain.user.repository.UserRepository;
+import com.inu.jeongbobada.global.file.FileStorage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.concurrent.ThreadLocalRandom;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -23,6 +23,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @AutoConfigureMockMvc
 class CheckNicknameIntegrationTest {
+
+    // 가입 때 재학 증빙 서류를 S3에 올리는 부분. 이 테스트는 서류와 무관해서 S3를 부르지 않게 바꾼다
+    @MockitoBean
+    private FileStorage fileStorage;
 
     @Autowired
     private MockMvc mockMvc;
@@ -44,11 +48,7 @@ class CheckNicknameIntegrationTest {
         String studentId = String.format("9%08d", n);
         createdStudentId = studentId;
 
-        mockMvc.perform(post("/api/auth/signup")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"studentId":"%s","password":"password1","nickname":"%s","email":"it%d@example.com"}
-                    """.formatted(studentId, nickname, n)))
+        mockMvc.perform(SignupRequests.signup(studentId, "password1", nickname, "it" + n + "@example.com"))
             .andExpect(status().isCreated());
         return nickname;
     }

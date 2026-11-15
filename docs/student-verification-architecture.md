@@ -51,13 +51,22 @@
 - [x] Learner Lab 버킷에서 실제 업로드·presigned URL·삭제 확인 ([file-upload-architecture.md](file-upload-architecture.md) 3단계)
 
 ### 1. 가입 상태 + 서류 첨부 가입
-- [ ] `User`에 `VerificationStatus`, 서류 S3 key, 신청일, 반려 사유 추가 (기존 가입자는 `APPROVED`)
-  - `ddl-auto: update`로 기존 행이 있는 테이블에 NOT NULL 컬럼을 추가하면 기동이 실패할 수 있다 ([erd.md](erd.md) 참고)
-- [ ] 로그인은 아직 막지 않는다 (4단계 참고)
-- [ ] `POST /api/auth/signup` multipart 전환, 서류 필수
-- [ ] Swagger 파일 첨부 문서화, `api-spec.md` 수정
-- [ ] 통합 테스트 (성공 + 파일 없음·형식 오류. S3는 `@MockitoBean`)
-- [ ] 프론트에 가입 요청 형식 변경 공유
+- [x] `User`에 `VerificationStatus`(`VERIFICATION_STATUS`), 서류 S3 key(`VERIFICATION_DOCUMENT_KEY`) 추가
+  - 기존 가입자는 컬럼 기본값 `APPROVED`로 처리한다 (`@ColumnDefault`). `ddl-auto: update`가 기존 행에 기본값을 채운다
+  - 신청일은 지금 가입일(`CREATED_AT`)과 같아서 따로 두지 않는다. 재제출(3단계)에서 달라지면 그때 추가한다
+  - 반려 사유는 반려 API(2단계)에서 추가한다
+- [x] 로그인은 아직 막지 않는다 (4단계 참고)
+- [x] `POST /api/auth/signup` multipart 전환, 서류 필수
+  - 폼 필드와 서류(`file`)를 `SignupRequest` 하나로 받는다(`@ModelAttribute`). Swagger에서 칸이 펼쳐져 바로 시험할 수 있다
+  - 서류가 없으면 Spring 기본 400 대신 `FILE_EMPTY`가 나가도록 `file`은 필수로 두지 않고 `FileStorage`가 검사한다
+  - 중복 확인 → 업로드 → `saveAndFlush` 순서. 저장이 실패하면 올린 서류를 지운다 (삭제 실패는 로그만, 수명주기 규칙이 정리)
+  - JSON으로 보내면 415이고 `message`에 `multipart/form-data`를 안내한다 (`GlobalExceptionHandler.handleHttpMediaTypeNotSupported`)
+- [x] `api-spec.md`, `erd.md` 수정
+- [x] 통합 테스트 `SignupVerificationDocumentIntegrationTest` (성공 / 서류 없음 / 형식 오류 / 기존 계정 기본값), 동시 가입 시 서류 정리는 `ConcurrentSignupIntegrationTest`
+  - 가입을 쓰는 기존 통합 테스트는 `SignupRequests.signup(...)`으로 multipart를 보내고 `FileStorage`를 `@MockitoBean`으로 바꾼다
+- [x] CI 스모크(`scripts/ci/compose-smoke.sh`)는 가입 API 대신 DB에 계정을 넣고 로그인을 확인한다 (CI에는 AWS 키가 없음)
+- [x] Learner Lab 버킷으로 실제 가입 확인: 201, `verification/{UUID}.pdf` 저장, 상태 `PENDING` (2026-11-15)
+- [ ] 프론트에 가입 요청 형식 변경 공유 (JSON → multipart)
 
 ### 2. 관리자 검토 API (`ROLE_ADMIN`)
 - [ ] 대기·승인·거절 목록 (닉네임, 학번, 이메일, 가입일 + 서류 형식 / 승인일 / 거절일·거절 사유)

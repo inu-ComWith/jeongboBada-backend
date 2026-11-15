@@ -47,7 +47,7 @@ class PasswordResetServiceTest {
 
     @BeforeEach
     void setUp() {
-        user = User.create(STUDENT_ID, passwordEncoder.encode("oldPassword1"), "테스터", null, EMAIL);
+        user = User.create(STUDENT_ID, passwordEncoder.encode("oldPassword1"), "테스터", null, EMAIL, null);
         when(userRepository.findByStudentIdForUpdate(STUDENT_ID)).thenReturn(Optional.of(user));
     }
 
@@ -105,7 +105,7 @@ class PasswordResetServiceTest {
 
     @Test
     void 이메일이_등록되지_않은_계정은_메일을_보내지_않는다() {
-        User noEmail = User.create(STUDENT_ID, passwordEncoder.encode("oldPassword1"), "테스터", null, null);
+        User noEmail = User.create(STUDENT_ID, passwordEncoder.encode("oldPassword1"), "테스터", null, null, null);
         when(userRepository.findByStudentIdForUpdate(STUDENT_ID)).thenReturn(Optional.of(noEmail));
 
         assertSendCodeFails(STUDENT_ID, EMAIL, UserErrorCode.PASSWORD_RESET_ACCOUNT_NOT_FOUND);

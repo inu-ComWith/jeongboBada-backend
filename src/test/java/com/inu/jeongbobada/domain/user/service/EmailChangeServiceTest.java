@@ -45,7 +45,7 @@ class EmailChangeServiceTest {
 
     @BeforeEach
     void setUp() {
-        user = User.create("202012345", passwordEncoder.encode(PASSWORD), "테스터", null, OLD_EMAIL);
+        user = User.create("202012345", passwordEncoder.encode(PASSWORD), "테스터", null, OLD_EMAIL, null);
         ReflectionTestUtils.setField(user, "userId", USER_ID);
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
         when(userRepository.findByEmail(anyString())).thenReturn(Optional.empty());
@@ -173,7 +173,7 @@ class EmailChangeServiceTest {
 
     @Test
     void 이메일이_없던_기존_가입자도_같은_방식으로_처음_등록할_수_있다() {
-        User legacy = User.create("202012346", passwordEncoder.encode(PASSWORD), "기존", null, null);
+        User legacy = User.create("202012346", passwordEncoder.encode(PASSWORD), "기존", null, null, null);
         ReflectionTestUtils.setField(legacy, "userId", 3L);
         when(userRepository.findById(3L)).thenReturn(Optional.of(legacy));
 

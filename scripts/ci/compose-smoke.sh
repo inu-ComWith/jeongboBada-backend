@@ -5,7 +5,7 @@
 #   로컬 실행은 application.yml(파일)에서, docker compose는 docker-compose.yml의 환경변수에서 설정을 받는다.
 #   새 설정값을 한쪽에만 추가하면 컨테이너가 기동 실패하는데, ./gradlew build는 이 경로를 전혀 검사하지 않는다.
 #
-# ⚠️ CI 전용이다. 끝날 때 `docker compose down -v`로 **MySQL 볼륨까지 지우고**, 확인용 계정을 가입시킨다.
+# ⚠️ CI 전용이다. 끝날 때 `docker compose down -v`로 **MySQL 볼륨까지 지우고**, 확인용 계정을 DB에 직접 넣는다.
 #    레포 폴더에서 그냥 실행하면 로컬 개발 DB(jeongbobada-mysql)의 데이터가 사라진다.
 #    로컬에서 돌려보려면 개발 DB와 겹치지 않는 별도 복사본에서(container_name·포트를 바꿔서) ALLOW_LOCAL=1로 실행할 것.
 #
@@ -76,10 +76,13 @@ check "OpenAPI 문서"                  "$BASE_URL/v3/api-docs"  200 '"openapi"'
 check "DB 조회 (datasource·data.sql)" "$BASE_URL/api/courses"  200 '"success":true'
 check "에러 응답 형식"                "$BASE_URL/api/no-such"  404 '"code":"API_NOT_FOUND"'
 
-# 가입 → 로그인으로 JWT가 실제로 발급되는지 (시크릿 키 등 JWT 설정 확인). 이 DB는 끝나면 down -v로 지워진다.
+# 로그인으로 JWT가 실제로 발급되는지 (시크릿 키 등 JWT 설정 확인). 이 DB는 끝나면 down -v로 지워진다.
+# 계정은 가입 API가 아니라 DB에 직접 넣는다. 가입은 재학 증빙 서류를 S3에 올리는데(#142), CI에는 AWS 키가 없다.
+# 비밀번호 해시는 "password1"의 BCrypt 값이다. 인증 상태 컬럼을 비우면 기본값(APPROVED)이 들어간다.
 student_id="9$(printf '%08d' $((RANDOM * RANDOM % 100000000)))"
-curl -s -o /dev/null -X POST "$BASE_URL/api/auth/signup" -H 'Content-Type: application/json' \
-  -d "{\"studentId\":\"$student_id\",\"password\":\"password1\",\"nickname\":\"sm$((RANDOM % 1000))\",\"email\":\"smoke$student_id@example.com\"}"
+docker compose exec -T mysql mysql -u"${MYSQL_USER:-jeongbobada}" -p"${MYSQL_PASSWORD:-jeongbobada}" "${MYSQL_DATABASE:-jeongbobada}" -e \
+  "INSERT INTO users (student_id, password, nickname, role, created_at, updated_at)
+   VALUES ('$student_id', '\$2a\$10\$08yHN85zXBaGM2yhoL6rjeQIzdz9KEDGzc45fGAE6zhhnR0bU.s4O', 'sm$((RANDOM % 1000))', 'USER', NOW(), NOW());"
 login_body=$(curl -s -w '\n%{http_code}' -X POST "$BASE_URL/api/auth/login" -H 'Content-Type: application/json' \
   -d "{\"studentId\":\"$student_id\",\"password\":\"password1\"}")
 if [ "${login_body##*$'\n'}" != "200" ] || [[ "$login_body" != *'"accessToken"'* ]]; then

@@ -1,11 +1,14 @@
 package com.inu.jeongbobada.domain.user.dto;
 
 import com.inu.jeongbobada.domain.user.validation.BcryptLength;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import org.springframework.web.multipart.MultipartFile;
 
+// 가입 폼(multipart/form-data). 가입 정보와 재학 증빙 서류를 한 요청으로 받는다 (#142)
 public record SignupRequest(
     @NotBlank(message = "학번은 필수입니다.")
     @Pattern(
@@ -35,6 +38,10 @@ public record SignupRequest(
     @NotBlank(message = "이메일은 필수입니다.")
     @Size(max = 100, message = "이메일은 100자 이하여야 합니다.")
     @Email(regexp = "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", message = "올바른 이메일 형식이 아닙니다.")
-    String email
+    String email,
+
+    // 재학 증빙 서류. 비어 있을 때 기본 400 대신 FILE_EMPTY로 안내하도록 여기서는 검사하지 않고 FileStorage가 검사한다
+    @Schema(description = "재학 증빙 서류 (pdf·jpg, 최대 10MB, 1개)", type = "string", format = "binary")
+    MultipartFile file
 ) {
 }

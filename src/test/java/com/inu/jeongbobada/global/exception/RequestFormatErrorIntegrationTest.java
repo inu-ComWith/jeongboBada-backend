@@ -46,6 +46,17 @@ class RequestFormatErrorIntegrationTest {
             .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"));
     }
 
+    // 가입은 서류 때문에 multipart만 받는다 (#142). 예전처럼 JSON으로 보내면 받는 형식을 안내한다
+    @Test
+    void multipart_API에_JSON으로_보내면_415와_받는_형식을_안내한다() throws Exception {
+        mockMvc.perform(post("/api/auth/signup")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(LOGIN_JSON))
+            .andExpect(status().isUnsupportedMediaType())
+            .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"))
+            .andExpect(jsonPath("$.message").value("지원하지 않는 Content-Type입니다. multipart/form-data로 보내주세요"));
+    }
+
     @Test
     void JSON으로_응답할_수_없는_Accept면_406을_JSON_형식으로() throws Exception {
         mockMvc.perform(get("/api/courses")

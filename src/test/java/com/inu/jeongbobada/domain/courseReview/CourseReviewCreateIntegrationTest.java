@@ -15,7 +15,9 @@ import com.inu.jeongbobada.domain.courseReview.entity.CourseReview;
 import com.inu.jeongbobada.domain.courseReview.repository.CourseReviewRepository;
 import com.inu.jeongbobada.domain.professor.entity.Professor;
 import com.inu.jeongbobada.domain.professor.repository.ProfessorRepository;
+import com.inu.jeongbobada.domain.user.SignupRequests;
 import com.inu.jeongbobada.domain.user.repository.UserRepository;
+import com.inu.jeongbobada.global.file.FileStorage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,6 +26,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
@@ -46,6 +49,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @AutoConfigureMockMvc
 class CourseReviewCreateIntegrationTest {
+
+    // 가입 때 재학 증빙 서류를 S3에 올리는 부분. 이 테스트는 서류와 무관해서 S3를 부르지 않게 바꾼다
+    @MockitoBean
+    private FileStorage fileStorage;
 
     private static final String VALID_BODY = """
         {
@@ -112,11 +119,7 @@ class CourseReviewCreateIntegrationTest {
     void setUp() throws Exception {
         int n = ThreadLocalRandom.current().nextInt(100_000_000);
         studentId = String.format("9%08d", n);
-        mockMvc.perform(post("/api/auth/signup")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"studentId":"%s","password":"password1","nickname":"rv%d","email":"rv%d@example.com"}
-                    """.formatted(studentId, n % 10_000, n)))
+        mockMvc.perform(SignupRequests.signup(studentId, "password1", "rv" + (n % 10_000), "rv" + n + "@example.com"))
             .andExpect(status().isCreated());
 
         course = courseRepository.save(new Course("테스트과목", "T" + n, "테스트 과목 설명"));
@@ -348,11 +351,7 @@ class CourseReviewCreateIntegrationTest {
         String additionalStudentId = String.format("8%08d", n);
         additionalStudentIds.add(additionalStudentId);
 
-        mockMvc.perform(post("/api/auth/signup")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"studentId":"%s","password":"password1","nickname":"o%d","email":"other%d@example.com"}
-                    """.formatted(additionalStudentId, n % 100_000, n)))
+        mockMvc.perform(SignupRequests.signup(additionalStudentId, "password1", "o" + (n % 100_000), "other" + n + "@example.com"))
             .andExpect(status().isCreated());
 
         return additionalStudentId;
