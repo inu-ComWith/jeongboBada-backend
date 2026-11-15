@@ -45,8 +45,8 @@ import java.util.stream.Collectors;
 @RestControllerAdvice
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
-    // MySQL ER_DUP_ENTRY: UNIQUE 제약 위반
-    private static final int MYSQL_DUPLICATE_ENTRY = 1062;
+    // PostgreSQL unique_violation: UNIQUE 제약 위반
+    private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
 
     // ---------- 우리 코드가 던지는 예외 ----------
 
@@ -280,7 +280,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             return true;
         }
         for (Throwable t = e; t != null; t = t.getCause()) {
-            if (t instanceof SQLException sqlException && sqlException.getErrorCode() == MYSQL_DUPLICATE_ENTRY) {
+            if (t instanceof SQLException sqlException && UNIQUE_VIOLATION_SQL_STATE.equals(sqlException.getSQLState())) {
                 return true;
             }
         }

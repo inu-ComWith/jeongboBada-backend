@@ -36,7 +36,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-// 실제 DB(MySQL)에 저장/조회하면서 컨트롤러 → 서비스 → 트랜잭션 → JPA 전체 경로를 검증한다.
+// 실제 DB(PostgreSQL)에 저장/조회하면서 컨트롤러 → 서비스 → 트랜잭션 → JPA 전체 경로를 검증한다.
 // 서비스 단위 테스트(mock)로는 잡히지 않는 것들이 목적:
 //  - 틀린 코드 예외가 나도 "실패 횟수"가 DB에 커밋되는가 (noRollbackFor)
 //  - Embedded 인증코드가 저장/조회/폐기(null)되는가
@@ -288,7 +288,7 @@ class PasswordResetIntegrationTest {
             .andExpect(jsonPath("$.code").value("VERIFICATION_CODE_RESEND_TOO_FAST"));
 
         jdbcTemplate.update("""
-            update users set password_reset_code_issued_at = password_reset_code_issued_at - interval 61 second
+            update users set password_reset_code_issued_at = password_reset_code_issued_at - interval '61 seconds'
             where student_id = ?
             """, account.studentId());
 

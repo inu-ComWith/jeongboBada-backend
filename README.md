@@ -10,7 +10,7 @@
 |---|---|
 | 언어/프레임워크 | Java 21, Spring Boot 4.1.0 |
 | 빌드 도구 | Gradle (Groovy) |
-| DB | MySQL 8.4 (Docker Compose로 실행) |
+| DB | PostgreSQL 17 (로컬은 Docker Compose, 배포는 Supabase) |
 | 인증 | Spring Security + JWT (jjwt 0.12.7), 로그인 식별자는 학번(student_id) |
 | API 문서 | springdoc-openapi (Swagger UI) |
 
@@ -20,15 +20,15 @@
 - JDK 21
 - Docker Desktop
 
-> MySQL은 로컬에 직접 설치하지 않습니다. 반드시 Docker Compose로 띄운 컨테이너를 사용합니다.
+> PostgreSQL은 로컬에 직접 설치하지 않습니다. 반드시 Docker Compose로 띄운 컨테이너를 사용합니다.
 
-### 2. MySQL 실행
+### 2. PostgreSQL 실행
 
 ```bash
 docker compose up -d
 ```
 
-`docker-compose.yml`에 MySQL 8.4 컨테이너 설정이 고정되어 있어, 별도 설정 없이 팀원 누구나 동일한 DB 환경을 띄울 수 있습니다.
+`docker-compose.yml`에 PostgreSQL 17 컨테이너 설정이 고정되어 있어, 별도 설정 없이 팀원 누구나 동일한 DB 환경을 띄울 수 있습니다.
 
 값을 바꾸고 싶다면(다른 비밀번호 등) `.env.example`을 복사해 `.env`로 저장한 뒤 값을 수정하세요. `.env`가 없어도 기본값으로 정상 동작합니다.
 

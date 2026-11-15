@@ -139,7 +139,7 @@ class LoginIntegrationTest {
             login(studentId, WRONG_PASSWORD);
         }
         jdbcTemplate.update(
-            "update users set login_locked_until = now() - interval 1 second where student_id = ?", studentId);
+            "update users set login_locked_until = now() - interval '1 second' where student_id = ?", studentId);
 
         login(studentId, PASSWORD).andExpect(status().isOk());
     }

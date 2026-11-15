@@ -43,7 +43,7 @@ dependencies {
 	developmentOnly 'org.springframework.boot:spring-boot-devtools'
 
 	compileOnly 'org.projectlombok:lombok'
-	runtimeOnly 'com.mysql:mysql-connector-j' // Docker로 띄운 MySQL 8.4 접속용 드라이버
+	runtimeOnly 'org.postgresql:postgresql' // PostgreSQL 접속용 드라이버 (로컬·CI는 Docker, 배포는 Supabase)
 	annotationProcessor 'org.projectlombok:lombok'
 
 	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'

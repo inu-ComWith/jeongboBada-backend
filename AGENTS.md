@@ -9,14 +9,14 @@
 
 ## 기술 스택 (확정)
 - Java 21, Spring Boot 4.1.0, Gradle(Groovy)
-- DB: **MySQL 8.x — 반드시 Docker로 실행. 로컬에 MySQL 직접 설치하지 말 것.**
+- DB: **PostgreSQL 17 — 로컬·CI는 반드시 Docker로 실행. 로컬에 PostgreSQL 직접 설치하지 말 것.** 배포 DB는 Supabase (#174)
 - 인증: Spring Security + JWT (jjwt 0.12.7). 로그인 식별자는 학번(student_id)
 - API 문서: springdoc-openapi (Swagger UI)
 - 프론트엔드: React (별도 레포, REST API로 통신)
 
 ## 중요 규칙
-- **MySQL은 로컬 설치 금지. docker-compose로 컨테이너를 띄워서 사용한다.**
-- PK는 `BIGINT AUTO_INCREMENT` 사용 (UUID 아님).
+- **PostgreSQL은 로컬 설치 금지. docker-compose로 컨테이너를 띄워서 사용한다.**
+- PK는 `BIGINT` + `GenerationType.IDENTITY`(자동 증가) 사용 (UUID 아님).
 - `application.yml`, `application-*.yml`은 .gitignore로 제외 (DB 비밀번호 포함).
   대신 값을 비운 `application.yml.example`을 커밋한다.
 - 패키지는 계층별이 아니라 **도메인(기능)별**로 나눈다.
@@ -69,14 +69,14 @@ PR에 아래 중 하나라도 있으면 **통합 테스트를 1개 이상** 붙�
 
 통합 테스트 작성 방법 (예: `PasswordResetIntegrationTest`):
 - `@SpringBootTest` + `@ActiveProfiles("test")` — 필요한 설정은 `application-test.properties`에서 받는다
-- 실제 MySQL(docker)을 쓰고, 테스트가 만든 데이터는 끝나고 직접 지운다
+- 실제 PostgreSQL(docker)을 쓰고, 테스트가 만든 데이터는 끝나고 직접 지운다
 - 메일 발송 같은 외부 호출은 `@MockitoBean`으로 대체한다
 - **로컬에서 통과했다고 끝내지 말 것.** 로컬은 각자의 `application.yml`이 있어서 CI와 조건이 다르다. 설정 파일이 없는 깨끗한
   복제본에서 CI와 같이 환경변수 3개(`SPRING_DATASOURCE_URL/USERNAME/PASSWORD`)만 주고 `./gradlew build`가 통과하는지 확인한다.
 - **DB도 CI처럼 비어 있어야 한다.** 로컬 DB에는 `bootRun`이 넣은 `data.sql` 시드 데이터가 있어서, 데이터에 따라 결과가 달라지는
-  테스트는 로컬만 통과할 수 있다. 빈 MySQL을 임시로 띄워 확인하고 끝나면 지운다:
-  `docker run -d --name jb-ci-mysql -e MYSQL_DATABASE=jeongbobada -e MYSQL_USER=jeongbobada -e MYSQL_PASSWORD=jeongbobada -e MYSQL_ROOT_PASSWORD=root -p 3307:3306 mysql:8.4`
-  → `SPRING_DATASOURCE_URL=jdbc:mysql://localhost:3307/jeongbobada` 로 빌드 → `docker rm -f jb-ci-mysql`
+  테스트는 로컬만 통과할 수 있다. 빈 PostgreSQL을 임시로 띄워 확인하고 끝나면 지운다:
+  `docker run -d --name jb-ci-postgres -e POSTGRES_DB=jeongbobada -e POSTGRES_USER=jeongbobada -e POSTGRES_PASSWORD=jeongbobada -p 5433:5432 postgres:17`
+  → `SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5433/jeongbobada` 로 빌드 → `docker rm -f jb-ci-postgres`
 
 ## 에러 처리 규칙
 에러 응답은 `{ success:false, code, message, errors? }`(`ApiResponse`) 하나로 통일한다. 아래 규칙은 테스트 2개가 CI에서 강제한다.
