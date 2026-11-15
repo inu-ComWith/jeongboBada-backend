@@ -11,7 +11,9 @@
 | 저장소 | AWS S3, 버킷은 비공개 | #98, 2026-09-26 |
 | 열람·다운로드 | 서버가 권한을 확인한 뒤 짧게 만료되는 presigned GET URL을 준다 | #98 |
 | 위치 | `global`에 공용 컴포넌트 하나. 허용 형식·최대 크기는 호출하는 도메인이 넘긴다 | #98 |
-| 신분 확인 서류 | pdf·jpg, 최대 10MB, 1개. 승인 후 바로 삭제 | [wireframe-spec.md](wireframe-spec.md) 1번 |
+| 신분 확인 서류 | pdf·jpg, 최대 10MB, 1개. 승인·반려 후 바로 삭제. 열람 URL 만료 5분 | [wireframe-spec.md](wireframe-spec.md) 1번, [student-verification-architecture.md](student-verification-architecture.md) |
+| 수명주기 규칙 | 쓰지 않는다. 관리자가 확인하기 전에 서류가 자동으로 지워지면 안 된다 | 2026-11-15 |
+| 성적 인증 | 범위에서 제외 | 2026-11-15 |
 | 강의 자료 첨부 | 강의평이 아니라 `Material`(학습자료 탭)에 붙인다 | [wireframe-spec.md](wireframe-spec.md) 10번 |
 
 ## 진행 환경
@@ -75,7 +77,8 @@ AGENTS.md 설정값 체크리스트 4곳 + `application-test.properties`(가짜 
 ### 트랜잭션
 S3는 DB 트랜잭션에 묶이지 않는다.
 - 업로드 성공 후 DB 저장이 실패하면 S3에 파일만 남는다 → 실패 시 방금 올린 파일을 지운다
-- DB에서 지운 뒤 S3 삭제가 실패하면 파일만 남는다 → 로그를 남기고, `verification/`은 버킷 수명주기 규칙으로 한 번 더 지운다
+- DB 처리 뒤 S3 삭제가 실패하면 파일만 남는다 → 처리는 되돌리지 않고 key를 에러 로그로 남겨 수동으로 지운다
+  - 수명주기 규칙(일정 기간 뒤 자동 삭제)은 쓰지 않는다. 관리자가 늦게 확인하면 처리 전 서류가 먼저 지워지기 때문이다
 
 ## 진행 상태
 
@@ -100,21 +103,20 @@ S3는 DB 트랜잭션에 묶이지 않는다.
   - `GlobalExceptionHandler`가 부모의 `handleMaxUploadSizeExceededException`을 오버라이드한다 (#111). 이때는 한도 값이 예외에 안 담겨 와서(-1) 기본 문구가 나간다
 - [x] 실제 S3 확인용 `S3RealBucketTest` — 환경변수 `S3_TEST_BUCKET`이 있을 때만 돈다 (CI는 자동 skip). 업로드 → presigned URL로 내려받기 → 삭제까지 확인. 실행법은 테스트 파일 주석 참고
 
-### PR 2. 가입 서류 연결 → [student-verification-architecture.md](student-verification-architecture.md)
-- [ ] `POST /api/auth/signup` multipart 전환, 서류 필수
-- [ ] 가입 상태(승인 대기·승인·반려) + 관리자 승인/반려 API(`ROLE_ADMIN`)
-- [ ] 승인·반려 시 서류 삭제
+### PR 2~. 가입 서류 연결
+재학생 인증 1~4단계로 나눠 진행한다. 체크리스트는 [student-verification-architecture.md](student-verification-architecture.md) "진행 상태"에 둔다.
 
 ### 3. Learner Lab 실제 확인 (개설 후)
 - [x] 리전·서비스 제한 확인: `us-east-1`에서 S3 버킷 생성·업로드·presigned URL·삭제 모두 가능 (2026-11-13)
   - Learner Lab 웹 터미널의 CLI는 Lab 계정이 아닌 `runserver` 역할로 실행돼 S3 권한이 없다. 버킷은 콘솔(`AWS ●`)에서 만든다
   - 로컬 키는 `AWS Details` → AWS CLI `Show` 블록을 `~/.aws/credentials`에 넣는다. `Start Lab`마다 바뀐다
 - [x] 버킷 생성(퍼블릭 액세스 차단 유지)
-- [x] `verification/` 수명주기 규칙 (`verification-cleanup`, 생성 후 30일 만료 — 연습용 값, 실제 일수는 미정)
+- [x] `verification/` 수명주기 규칙 (`verification-cleanup`, 30일) 생성까지 연습함
+- [ ] 콘솔에서 `verification-cleanup` 규칙 삭제 (버킷 → 관리 → 수명 주기 규칙). 수명주기 규칙을 쓰지 않기로 결정했다 (2026-11-15, "결정된 것" 참고)
 - [x] 로컬에서 임시 키로 업로드·presigned URL·삭제 확인 (가짜 파일만, `S3_TEST_BUCKET`을 주고 `S3RealBucketTest` 실행해 통과)
 
 ## 결정이 필요한 것
 - [ ] 학습자료 허용 파일 형식·최대 크기 (와이어프레임 미정)
 - [ ] 실제 서비스용 AWS 계정 (명의·결제 수단)
-- [ ] presigned GET URL 만료 시간 (관리자 서류 열람 기준)
-- [ ] 반려 후 재제출 시 본인 확인 방식 (반려 사용자는 로그인 토큰이 없음)
+- [x] presigned GET URL 만료 시간 (관리자 서류 열람 기준) → 5분 (2026-11-15)
+- [x] 반려 후 재제출 시 본인 확인 방식 → 학번 + 비밀번호 + 새 서류 (2026-11-15, [student-verification-architecture.md](student-verification-architecture.md))
