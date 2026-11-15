@@ -66,7 +66,7 @@
   - 가입을 쓰는 기존 통합 테스트는 `SignupRequests.signup(...)`으로 multipart를 보내고 `FileStorage`를 `@MockitoBean`으로 바꾼다
 - [x] CI 스모크(`scripts/ci/compose-smoke.sh`)는 가입 API 대신 DB에 계정을 넣고 로그인을 확인한다 (CI에는 AWS 키가 없음)
 - [x] Learner Lab 버킷으로 실제 가입 확인: 201, `verification/{UUID}.pdf` 저장, 상태 `PENDING` (2026-11-15)
-- [ ] 프론트에 가입 요청 형식 변경 공유 (JSON → multipart)
+- [x] 프론트 영향 확인: 프론트가 가입 API를 아직 연동하지 않아 깨지는 화면은 없다. 연동할 때 Swagger의 multipart 형식을 따른다 (2026-11-15)
 
 ### 2. 관리자 검토 API (`ROLE_ADMIN`)
 - [ ] 대기·승인·거절 목록 (닉네임, 학번, 이메일, 가입일 + 서류 형식 / 승인일 / 거절일·거절 사유)
