@@ -1,5 +1,6 @@
 package com.inu.jeongbobada.global.exception;
 
+import com.inu.jeongbobada.domain.user.SignupRequests;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -14,6 +15,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -32,9 +34,7 @@ class ValidationErrorFieldsIntegrationTest {
 
     @Test
     void 검증_실패는_실패한_필드를_모두_errors로_내려준다() throws Exception {
-        mockMvc.perform(post("/api/auth/signup")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{}"))
+        mockMvc.perform(multipart("/api/auth/signup"))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"))
             .andExpect(jsonPath("$.errors[*].field").value(containsInAnyOrder("studentId", "password", "nickname", "email")))
@@ -44,11 +44,7 @@ class ValidationErrorFieldsIntegrationTest {
     @Test
     void 가입_닉네임은_6자_이하_한글_영문_숫자만_허용한다() throws Exception {
         for (String nickname : new String[] {"일곱글자닉네임", "닉_네임"}) {
-            mockMvc.perform(post("/api/auth/signup")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("""
-                        {"studentId":"999999999","password":"password1","nickname":"%s","email":"nick@example.com"}
-                        """.formatted(nickname)))
+            mockMvc.perform(SignupRequests.signup("999999999", "password1", nickname, "nick@example.com"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors[*].field").value(containsInAnyOrder("nickname")));
         }

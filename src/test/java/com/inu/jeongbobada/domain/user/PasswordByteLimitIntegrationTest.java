@@ -2,6 +2,7 @@ package com.inu.jeongbobada.domain.user;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.inu.jeongbobada.domain.user.repository.UserRepository;
+import com.inu.jeongbobada.global.file.FileStorage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -10,6 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
@@ -27,6 +29,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @AutoConfigureMockMvc
 class PasswordByteLimitIntegrationTest {
+
+    // 가입 때 재학 증빙 서류를 S3에 올리는 부분. 이 테스트는 서류와 무관해서 S3를 부르지 않게 바꾼다
+    @MockitoBean
+    private FileStorage fileStorage;
 
     private static final String PASSWORD = "password1";
     // 26자, 2 + 23*3 + 1 = 72바이트
@@ -110,11 +116,7 @@ class PasswordByteLimitIntegrationTest {
     }
 
     private ResultActions signUp(String password) throws Exception {
-        return mockMvc.perform(post("/api/auth/signup")
-            .contentType(MediaType.APPLICATION_JSON)
-            .content("""
-                {"studentId":"%s","password":"%s","nickname":"pw%d","email":"pw%d@example.com"}
-                """.formatted(studentId, password, seed % 10_000, seed)));
+        return mockMvc.perform(SignupRequests.signup(studentId, password, "pw" + (seed % 10_000), "pw" + seed + "@example.com"));
     }
 
     private String login(String password) throws Exception {

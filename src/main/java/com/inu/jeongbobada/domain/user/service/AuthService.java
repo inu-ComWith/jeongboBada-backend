@@ -10,9 +10,12 @@ import com.inu.jeongbobada.domain.user.exception.LoginLockedException;
 import com.inu.jeongbobada.domain.user.exception.UserErrorCode;
 import com.inu.jeongbobada.domain.user.repository.UserRepository;
 import com.inu.jeongbobada.global.exception.BusinessException;
+import com.inu.jeongbobada.global.file.FileStorage;
+import com.inu.jeongbobada.global.file.FileType;
 import com.inu.jeongbobada.global.security.JwtProperties;
 import com.inu.jeongbobada.global.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -20,13 +23,20 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.unit.DataSize;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Set;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
+
+    private static final String VERIFICATION_PREFIX = "verification";
+    private static final Set<FileType> VERIFICATION_DOCUMENT_TYPES = Set.of(FileType.PDF, FileType.JPG);
+    private static final DataSize VERIFICATION_DOCUMENT_MAX_SIZE = DataSize.ofMegabytes(10);
 
     private static final int MAX_LOGIN_FAILURES = 5;
     private static final Duration LOGIN_LOCK_DURATION = Duration.ofMinutes(5);
@@ -36,10 +46,12 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final JwtTokenProvider jwtTokenProvider;
     private final JwtProperties jwtProperties;
+    private final FileStorage fileStorage;
 
-    // 학번/닉네임 중복 확인 후 비밀번호 암호화해서 저장
+    // 학번/닉네임/이메일 중복 확인 → 재학 증빙 서류 S3 업로드 → 승인 대기(PENDING)로 저장.
+    // 중복이면 업로드하지 않는다. S3는 DB 트랜잭션에 묶이지 않아서, 저장이 실패하면 올린 서류를 직접 지운다.
     @Transactional
-    public void signup (SignupRequest request) {
+    public void signup(SignupRequest request) {
         //학번 중복 확인
         if (userRepository.findByStudentId(request.studentId()).isPresent()) {
             throw new BusinessException(UserErrorCode.DUPLICATE_STUDENT_ID);
@@ -56,16 +68,34 @@ public class AuthService {
         //DB에 저장할때 해쉬값으로 바꿔서 저장
         String encodedPassword = passwordEncoder.encode(request.password());
 
+        String documentKey = fileStorage.upload(VERIFICATION_PREFIX, request.file(),
+            VERIFICATION_DOCUMENT_TYPES, VERIFICATION_DOCUMENT_MAX_SIZE);
         User user = User.create(
             request.studentId(),
             encodedPassword,
             request.nickname(),
             null, // department: 회원가입 요청에 아직 없는 값이라 일단 null
-            email
+            email,
+            documentKey
         );
 
-        userRepository.save(user);
+        // flush까지 해야 UNIQUE 충돌(동시 가입, #109)이 여기서 드러나 서류를 지울 수 있다
+        try {
+            userRepository.saveAndFlush(user);
+        } catch (RuntimeException e) {
+            deleteUploadedDocument(documentKey, e);
+            throw e;
+        }
+    }
 
+    // 원래 예외(409 등)를 살려야 하므로 삭제 실패는 로그만 남긴다. 남은 서류는 S3 수명주기 규칙(30일)이 지운다
+    private void deleteUploadedDocument(String documentKey, RuntimeException cause) {
+        try {
+            fileStorage.delete(documentKey);
+        } catch (RuntimeException deleteFailure) {
+            cause.addSuppressed(deleteFailure);
+            log.error("가입 실패 후 서류 삭제 실패: key={}", documentKey, deleteFailure);
+        }
     }
 
     // 가입 폼에서 제출 전 미리 확인하는 용도. 최종 중복 검사는 signup()에서 다시 함(여기서 통과해도 그 사이 다른 사람이 선점할 수 있음)

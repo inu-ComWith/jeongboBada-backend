@@ -1,6 +1,7 @@
 package com.inu.jeongbobada.domain.user;
 
 import com.inu.jeongbobada.domain.user.repository.UserRepository;
+import com.inu.jeongbobada.global.file.FileStorage;
 import com.inu.jeongbobada.global.mail.EmailSender;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.AfterEach;
@@ -48,6 +49,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 class PasswordResetIntegrationTest {
 
+    // 가입 때 재학 증빙 서류를 S3에 올리는 부분. 이 테스트는 서류와 무관해서 S3를 부르지 않게 바꾼다
+    @MockitoBean
+    private FileStorage fileStorage;
+
     private static final String PASSWORD = "password1";
 
     @Autowired
@@ -79,11 +84,7 @@ class PasswordResetIntegrationTest {
             String.format("9%08d", n), "t" + String.format("%05d", n % 100_000), "it" + n + "@example.com");
         createdStudentIds.add(account.studentId());
 
-        mockMvc.perform(post("/api/auth/signup")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"studentId":"%s","password":"%s","nickname":"%s","email":"%s"}
-                    """.formatted(account.studentId(), PASSWORD, account.nickname(), account.email())))
+        mockMvc.perform(SignupRequests.signup(account.studentId(), PASSWORD, account.nickname(), account.email()))
             .andExpect(status().isCreated());
         return account;
     }
@@ -328,10 +329,7 @@ class PasswordResetIntegrationTest {
     void 이미_가입된_이메일로는_회원가입할_수_없다() throws Exception {
         Account account = signup();
 
-        postJson("/api/auth/signup",
-            """
-            {"studentId":"%s","password":"%s","nickname":"%s","email":"%s"}
-            """.formatted("8" + account.studentId().substring(1), PASSWORD,
+        mockMvc.perform(SignupRequests.signup("8" + account.studentId().substring(1), PASSWORD,
                 "x" + account.nickname().substring(1), account.email().toUpperCase()))
             .andExpect(status().isConflict());
     }

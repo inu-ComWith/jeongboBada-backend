@@ -11,6 +11,7 @@ import com.inu.jeongbobada.global.common.ApiResponse;
 import com.inu.jeongbobada.global.exception.code.GlobalErrorCode;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -21,8 +22,10 @@ public class AuthController {
 
     private final AuthService authService;
 
-    @PostMapping("/signup")
-    public ResponseEntity<ApiResponse<Void>> signup(@Valid @RequestBody SignupRequest request) {
+    // 가입 정보와 재학 증빙 서류를 함께 받는다 (multipart/form-data). 서류만 따로 올리는 API는 두지 않는다 —
+    // 로그인 없이 계정과 무관한 파일이 쌓이는 걸 막기 위해서다 (#142).
+    @PostMapping(value = "/signup", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<Void>> signup(@Valid @ModelAttribute SignupRequest request) {
         authService.signup(request);
 
         ApiResponse<Void> response = ApiResponse.created(null);

@@ -2,6 +2,7 @@ package com.inu.jeongbobada.domain.user;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.inu.jeongbobada.domain.user.repository.UserRepository;
+import com.inu.jeongbobada.global.file.FileStorage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,6 +12,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.nio.charset.StandardCharsets;
@@ -27,6 +29,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @AutoConfigureMockMvc
 class MyInfoIntegrationTest {
+
+    // 가입 때 재학 증빙 서류를 S3에 올리는 부분. 이 테스트는 서류와 무관해서 S3를 부르지 않게 바꾼다
+    @MockitoBean
+    private FileStorage fileStorage;
 
     @Autowired
     private MockMvc mockMvc;
@@ -49,11 +55,7 @@ class MyInfoIntegrationTest {
         studentId = String.format("9%08d", n);
         nickname = "me" + (n % 10_000);
         email = "me" + n + "@example.com";
-        mockMvc.perform(post("/api/auth/signup")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"studentId":"%s","password":"password1","nickname":"%s","email":"%s"}
-                    """.formatted(studentId, nickname, email)))
+        mockMvc.perform(SignupRequests.signup(studentId, "password1", nickname, email))
             .andExpect(status().isCreated());
     }
 

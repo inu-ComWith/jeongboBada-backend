@@ -9,7 +9,7 @@
 | Method | Path | 설명 | Request | Response | 상태 |
 |---|---|---|---|---|---|
 | GET | /api/auth/check-nickname?nickname= | 회원가입 폼에서 닉네임 사용 가능 여부 실시간 확인 | Query: <br/> `nickname` | 200 <br/> { "success": true, "data": { "available": true } } | 구현완료 |
-| POST | /api/auth/signup | 회원가입 (학번 기반) | { <br/> "studentId": "202012345", <br/> "password": "영문+숫자 8~64자", <br/> "nickname": "한글/영문/숫자 2~6자", <br/> "email": "user@example.com" <br/>} | 201 <br/> { "success": true, "data": null } | 구현완료 |
+| POST | /api/auth/signup | 회원가입 (학번 기반) + 재학 증빙 서류 제출 | `multipart/form-data` <br/> `studentId`: "202012345" <br/> `password`: 영문+숫자 8~64자 <br/> `nickname`: 한글/영문/숫자 2~6자 <br/> `email`: "user@example.com" <br/> `file`: 재학 증빙 서류 (pdf·jpg, 최대 10MB) | 201 <br/> { "success": true, "data": null } | 구현완료 |
 | POST | /api/auth/login | 로그인 (JWT 발급) | { <br/> "studentId": "202012345", <br/> "password": "..." <br/>} | 200 <br/> { "success": true, "data": { <br/> "accessToken": "eyJ...", <br/> "refreshToken": "eyJ..." <br/>} } | 구현완료 |
 | POST | /api/auth/reissue | Access Token 재발급 | { <br/> "refreshToken": "eyJ..." <br/>} | 200 <br/> { "success": true, "data": { <br/> "accessToken": "eyJ...", <br/> "refreshToken": "eyJ..." <br/>} } | 구현완료 |
 | POST | /api/auth/logout | 로그아웃 (서버의 refresh token 무효화) | { <br/> "refreshToken": "..." <br/>} (권장) <br/> 또는 Header: `Authorization: Bearer {accessToken}` (예전 방식) | 200 <br/> { "success": true, "data": null } <br/> 둘 다 없으면 400 | 구현완료 |
@@ -22,6 +22,9 @@
 
 - 닉네임 중복확인은 **닉네임만 제공**한다. 학번/이메일 중복확인은 제공하지 않음 (이 학번/이메일로 가입돼 있다는 걸 누구나 조회할 수 있게 되는 user enumeration 방지) — 가입 시도 시 409로만 안내. 확인 시점과 실제 가입 시점 사이에 다른 사람이 선점할 수 있어 최종 검증은 `signup`에서 다시 함
 - 회원가입에 `email`이 **필수**로 추가됨 (비밀번호 찾기용). 이미 가입된 이메일이면 409. 대소문자/앞뒤 공백은 무시하고 비교
+- 회원가입은 **`multipart/form-data`**로 보낸다 (#142). 입력값은 폼 필드, 재학 증빙 서류는 `file` 파트. JSON으로 보내면 415 `UNSUPPORTED_MEDIA_TYPE`
+  - 서류 오류: 없음 400 `FILE_EMPTY`, pdf·jpg가 아님 400 `FILE_TYPE_NOT_ALLOWED`, 10MB 초과 413 `FILE_TOO_LARGE`, 저장 실패 503 `FILE_UPLOAD_FAILED`. 학번·닉네임·이메일 중복(409)이면 서류는 저장하지 않는다
+  - 가입하면 **승인 대기** 상태가 된다. 지금은 승인 전에도 로그인할 수 있고, 관리자 승인 API가 생긴 뒤 승인 전 로그인을 막는다 (`docs/student-verification-architecture.md` 4단계)
 - 새 비밀번호(가입·변경·재설정)는 64자 이하이면서 **72바이트 이하**여야 한다. 영문·숫자는 1바이트, 한글은 3바이트로 계산하며, 넘으면 400 `INVALID_INPUT_VALUE`
 - 비밀번호 찾기: `send-code`는 학번이 없거나 이메일이 다르면 404 `PASSWORD_RESET_ACCOUNT_NOT_FOUND`, 60초 안에 재요청하면 429 `VERIFICATION_CODE_RESEND_TOO_FAST`, 재발송을 다 쓰면 429 `PASSWORD_RESET_RESEND_LIMIT_EXCEEDED`, 발송 실패는 503 `EMAIL_SEND_FAILED`. 인증코드는 6자리, 5분 유효. 재발송은 첫 발송을 빼고 하루 5회(한국 시간 자정에 초기화)이고, `resendCount`는 첫 발송이면 0, 재발송이면 n/5회의 n이다
 - 내 정보 조회(`GET /api/users/me`)는 **본인 전용**이라 `studentId`·`email`을 내려준다. `email`은 이메일 기능 이전 가입자면 null, `department`는 가입 때 받지 않아 **현재 항상 null**. `role`은 `USER` 또는 `ADMIN`으로, 프론트가 관리자 화면을 보여줄지 정하는 용도다 (관리자 API는 서버가 따로 403으로 막는다). 이름·학년·부전공·프로필 사진은 마이페이지 디자인 확정 후 추가 예정(필드 추가만 하므로 기존 클라이언트는 영향 없음)
@@ -135,7 +138,7 @@
 | 405 | `METHOD_NOT_ALLOWED` | 지원하지 않는 HTTP 메서드 |
 | 406 | `NOT_ACCEPTABLE` | `Accept`가 JSON이 아님 (예: `application/xml`) |
 | 409 | `DUPLICATE_RESOURCE` | 동시 요청으로 DB UNIQUE 제약에 걸림 (가입 더블클릭 등). 사전 확인에 걸리면 도메인 코드(`DUPLICATE_NICKNAME` 등)가 나가고, 확인과 저장 사이에 다른 요청이 끼어든 경우에만 이 코드 |
-| 415 | `UNSUPPORTED_MEDIA_TYPE` | JSON을 받는 API에 `Content-Type`이 없거나 JSON이 아님 |
+| 415 | `UNSUPPORTED_MEDIA_TYPE` | `Content-Type`이 없거나 API가 받는 형식이 아님 (대부분 JSON, 회원가입은 `multipart/form-data`. `message`에 받는 형식 안내) |
 | 500 | `INTERNAL_SERVER_ERROR` | 서버 내부 오류 |
 | 400 | `FILE_EMPTY` | 업로드할 파일이 없거나 비어 있음 |
 | 400 | `FILE_TYPE_NOT_ALLOWED` | 허용하지 않는 파일 형식, 또는 확장자·`Content-Type`·실제 내용이 서로 다름. `message`에 허용 형식 포함 (예: `pdf, jpg 파일만 올릴 수 있어요`) |

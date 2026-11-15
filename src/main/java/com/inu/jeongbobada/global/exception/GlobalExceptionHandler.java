@@ -16,6 +16,7 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -172,6 +173,18 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             return handleExceptionInternal(ex, body, headers, status, request);
         }
         return handleExceptionInternal(ex, null, headers, status, request);
+    }
+
+    // 기본 문구는 JSON을 안내한다. 가입처럼 multipart만 받는 API도 있어서, 그 API가 받는 형식을 알려준다
+    @Override
+    protected ResponseEntity<Object> handleHttpMediaTypeNotSupported(
+            HttpMediaTypeNotSupportedException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+        List<MediaType> supported = ex.getSupportedMediaTypes();
+        ApiResponse<Void> body = supported.isEmpty() || supported.contains(MediaType.APPLICATION_JSON)
+                ? ApiResponse.error(GlobalErrorCode.UNSUPPORTED_MEDIA_TYPE)
+                : ApiResponse.error(GlobalErrorCode.UNSUPPORTED_MEDIA_TYPE,
+                        "지원하지 않는 Content-Type입니다. " + MediaType.toString(supported) + "로 보내주세요");
+        return handleExceptionInternal(ex, body, headers, status, request);
     }
 
     // 업로드 파일이 spring.servlet.multipart.max-file-size를 넘었을 때. 컨트롤러에 닿기 전에 Spring이 막으므로

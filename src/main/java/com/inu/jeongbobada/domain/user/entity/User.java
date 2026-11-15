@@ -45,14 +45,28 @@ public class User extends BaseEntity {
     @Column(name = "EMAIL", unique = true, length = 100)
     private String email;
 
+    // 기본값 APPROVED는 이 컬럼이 생기기 전에 가입한 계정용이다. 서류 없이 PENDING이 되면 승인받을 방법이 없다.
+    // 새 가입은 create()에서 PENDING으로 넣는다 (docs/student-verification-architecture.md)
+    @Enumerated(EnumType.STRING)
+    @ColumnDefault("'APPROVED'")
+    @Column(name = "VERIFICATION_STATUS", nullable = false, length = 20)
+    private VerificationStatus verificationStatus;
+
+    // 재학 증빙 서류의 S3 key (URL 아님. 열람할 때 presigned URL을 만든다). 이 기능 전에 가입한 계정은 null
+    @Column(name = "VERIFICATION_DOCUMENT_KEY", length = 100)
+    private String verificationDocumentKey;
+
     @Builder(access = AccessLevel.PRIVATE)
-    private User(String studentId, String password, String nickname, UserRole userRole, String department, String email) {
+    private User(String studentId, String password, String nickname, UserRole userRole, String department, String email,
+                 VerificationStatus verificationStatus, String verificationDocumentKey) {
         this.studentId = studentId;
         this.password = password;
         this.nickname = nickname;
         this.userRole = userRole;
         this.department = department;
         this.email = email;
+        this.verificationStatus = verificationStatus;
+        this.verificationDocumentKey = verificationDocumentKey;
     }
 
     // 비밀번호 찾기 / 이메일 변경 인증코드는 용도별로 컬럼을 분리한다.
@@ -178,7 +192,8 @@ public class User extends BaseEntity {
         clearEmailChange();
     }
 
-    public static User create(String studentId, String encodedPassword, String nickname, String department, String email) {
+    public static User create(String studentId, String encodedPassword, String nickname, String department, String email,
+                              String verificationDocumentKey) {
         return User.builder()
             .studentId(studentId)
             .password(encodedPassword)
@@ -186,6 +201,8 @@ public class User extends BaseEntity {
             .userRole(UserRole.USER)
             .department(department)
             .email(email)
+            .verificationStatus(VerificationStatus.PENDING)
+            .verificationDocumentKey(verificationDocumentKey)
             .build();
     }
 }

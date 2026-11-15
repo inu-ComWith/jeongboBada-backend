@@ -2,7 +2,9 @@ package com.inu.jeongbobada.global.exception;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.inu.jeongbobada.domain.user.SignupRequests;
 import com.inu.jeongbobada.domain.user.repository.UserRepository;
+import com.inu.jeongbobada.global.file.FileStorage;
 import com.inu.jeongbobada.global.mail.EmailSender;
 import com.inu.jeongbobada.global.security.JwtTokenProvider;
 import org.junit.jupiter.api.AfterEach;
@@ -32,7 +34,6 @@ import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -46,6 +47,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @AutoConfigureMockMvc
 class BadRequestSafetyNetIntegrationTest {
+
+    // 가입 때 재학 증빙 서류를 S3에 올리는 부분. 이 테스트는 서류와 무관해서 S3를 부르지 않게 바꾼다
+    @MockitoBean
+    private FileStorage fileStorage;
 
     // 아직 고치지 못한 알려진 500. "METHOD 경로패턴 요청유형" → 이슈 번호. 이 조합에서 난 500만 건너뛴다.
     // 이슈가 해결되면 반드시 여기서 지운다 (그 이슈의 체크리스트에 적어둘 것).
@@ -103,11 +108,7 @@ class BadRequestSafetyNetIntegrationTest {
     void signUp() throws Exception {
         int n = ThreadLocalRandom.current().nextInt(100_000_000);
         studentId = String.format("9%08d", n);
-        mockMvc.perform(post("/api/auth/signup")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"studentId":"%s","password":"password1","nickname":"sn%d","email":"sn%d@example.com"}
-                    """.formatted(studentId, n % 10_000, n)))
+        mockMvc.perform(SignupRequests.signup(studentId, "password1", "sn" + (n % 10_000), "sn" + n + "@example.com"))
             .andExpect(status().isCreated());
         accessToken = jwtTokenProvider.createAccessToken(studentId);
     }
