@@ -56,6 +56,14 @@ public class User extends BaseEntity {
     @Column(name = "VERIFICATION_DOCUMENT_KEY", length = 100)
     private String verificationDocumentKey;
 
+    // 관리자가 승인·반려한 시각 (상태로 승인일/반려일을 구분한다). 검토 없이 승인 상태인 기존 계정은 null
+    @Column(name = "VERIFICATION_PROCESSED_AT")
+    private LocalDateTime verificationProcessedAt;
+
+    // 반려 사유. 관리자가 비워 둘 수 있다 (#142)
+    @Column(name = "REJECTION_REASON", length = 200)
+    private String rejectionReason;
+
     @Builder(access = AccessLevel.PRIVATE)
     private User(String studentId, String password, String nickname, UserRole userRole, String department, String email,
                  VerificationStatus verificationStatus, String verificationDocumentKey) {
@@ -190,6 +198,21 @@ public class User extends BaseEntity {
     public void changeEmail(String email) {
         this.email = email;
         clearEmailChange();
+    }
+
+    // 처리하면 서류는 바로 지운다(승인 후 삭제 안내). S3 삭제는 커밋 뒤에 서비스가 하고, 여기서는 key만 비운다
+    public void approveVerification(LocalDateTime now) {
+        this.verificationStatus = VerificationStatus.APPROVED;
+        this.verificationProcessedAt = now;
+        this.rejectionReason = null;
+        this.verificationDocumentKey = null;
+    }
+
+    public void rejectVerification(LocalDateTime now, String reason) {
+        this.verificationStatus = VerificationStatus.REJECTED;
+        this.verificationProcessedAt = now;
+        this.rejectionReason = reason;
+        this.verificationDocumentKey = null;
     }
 
     public static User create(String studentId, String encodedPassword, String nickname, String department, String email,
