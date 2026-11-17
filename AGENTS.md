@@ -20,6 +20,11 @@
 - `application.yml`, `application-*.yml`은 .gitignore로 제외 (DB 비밀번호 포함).
   대신 값을 비운 `application.yml.example`을 커밋한다.
 - 패키지는 계층별이 아니라 **도메인(기능)별**로 나눈다.
+- **AI 서명 금지.** 커밋 메시지·PR 제목·본문에 AI 도구 서명을 넣지 않는다
+  (`Co-Authored-By: Claude ...`, `🤖 Generated with [Claude Code](...)`, Codex·Copilot 등 같은 형식 포함).
+  - Claude Code는 `.claude/settings.json`의 `attribution`을 빈 값으로 둬서 자동으로 붙이지 않는다
+  - 다른 도구는 이 규칙을 직접 지킨다. 붙어 있으면 CI의 "AI 서명 검사"(`scripts/ci/check-no-ai-attribution.sh`)가 실패한다
+  - 머지 전 커밋 메시지는 로컬에서 확인할 수 있다: `git log --format=%B origin/develop..HEAD | bash scripts/ci/check-no-ai-attribution.sh`
 
 ## 코드 작성 원칙: 아직 일어나지 않은 일을 예상해서 코드를 짜지 않는다
 지금 요구사항과 지금 코드에 필요한 것만 작성한다. 미래를 예상해서 넣은 코드는 대부분 쓰이지 않고, 코드만 이상하게 만든다.
