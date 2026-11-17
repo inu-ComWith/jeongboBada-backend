@@ -71,6 +71,8 @@ erDiagram
         varchar PENDING_EMAIL "변경 대기 이메일"
         enum VERIFICATION_STATUS "PENDING/APPROVED/REJECTED"
         varchar VERIFICATION_DOCUMENT_KEY "재학 증빙 서류 S3 key"
+        datetime VERIFICATION_PROCESSED_AT "승인일/거절일"
+        varchar REJECTION_REASON
     }
     PROFESSOR {
         bigint PROFESSOR_ID PK
@@ -190,7 +192,9 @@ erDiagram
 | `EMAIL_CHANGE_CODE_FAILED_ATTEMPTS` | INT | | |
 | `PENDING_EMAIL` | VARCHAR(100) | | 인증코드를 발송한 "새 이메일". 코드 검증 후 변경 요청의 이메일과 같아야 확정됨 |
 | `VERIFICATION_STATUS` | VARCHAR(20) | NN | 재학생 인증 상태 (값 목록 check 제약) `PENDING` / `APPROVED` / `REJECTED`. 새 가입은 `PENDING`. **기본값 `APPROVED`** — 이 컬럼 전에 가입한 계정은 서류가 없어서 승인 상태로 둔다 (#142) |
-| `VERIFICATION_DOCUMENT_KEY` | VARCHAR(100) | | 재학 증빙 서류의 S3 key (`verification/{UUID}.pdf`). URL이 아니라 key를 저장하고 열 때 presigned URL을 만든다. 기존 계정은 null |
+| `VERIFICATION_DOCUMENT_KEY` | VARCHAR(100) | | 재학 증빙 서류의 S3 key (`verification/{UUID}.pdf`). URL이 아니라 key를 저장하고 열 때 presigned URL을 만든다. 기존 계정은 null. **승인·거절하면 서류를 지우고 null로 비운다** |
+| `VERIFICATION_PROCESSED_AT` | DATETIME | | 관리자가 승인·거절한 시각 (상태로 승인일/거절일 구분). 검토 없이 승인 상태인 기존 계정은 null |
+| `REJECTION_REASON` | VARCHAR(200) | | 거절 사유. 선택 입력이라 거절이어도 null일 수 있다. 승인하면 null |
 | `CREATED_AT` | DATETIME(6) | NN | 자동 |
 | `UPDATED_AT` | DATETIME(6) | NN | 자동 |
 

@@ -58,6 +58,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PERMIT_ALL_PATHS).permitAll()
                         .requestMatchers("/api/users/me/**").authenticated()
+                        // 관리자 전용 (가입 검토 등). 토큰이 없으면 401, ADMIN이 아니면 403
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/professors/*/professor-comments/**").authenticated()
                         // 강의평 작성만 로그인 필요 (조회는 비로그인 허용). 컨트롤러가 아니라 여기서 막아야
                         // 요청 검증(@Valid)보다 인증이 먼저 걸려, 토큰 없는 잘못된 요청도 400이 아니라 401이 된다

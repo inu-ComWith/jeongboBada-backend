@@ -19,6 +19,10 @@
 | GET | /api/users/me | 내 정보 조회 (로그인 필요) | Header: <br/> `Authorization: Bearer {accessToken}` | 200 <br/> { "success": true, "data": { <br/> "nickname": "바다", <br/> "studentId": "202012345", <br/> "email": "user@example.com", <br/> "department": null, <br/> "role": "USER" <br/>} } | 구현완료 |
 | POST | /api/users/me/email/send-code | 이메일 등록/변경 ① 새 이메일로 인증코드 발송 (로그인 필요) | Header: <br/> `Authorization: Bearer {accessToken}` <br/> { <br/> "newEmail": "new@example.com" <br/>} | 200 <br/> { "success": true, "data": null } | 구현완료 |
 | PATCH | /api/users/me/email | 이메일 등록/변경 ② 코드+현재 비밀번호 확인 후 변경 (로그인 필요) | Header: <br/> `Authorization: Bearer {accessToken}` <br/> { <br/> "newEmail": "new@example.com", <br/> "code": "숫자 6자리", <br/> "currentPassword": "..." <br/>} | 200 <br/> { "success": true, "data": null } | 구현완료 |
+| GET | /api/admin/verifications?status= | 가입 검토 목록 (관리자) | Header: <br/> `Authorization: Bearer {accessToken}` (ADMIN) <br/> Query: `status` = `PENDING` / `APPROVED` / `REJECTED` | 200 <br/> { "success": true, "data": [ { <br/> "userId": 1, "nickname": "바다", "studentId": "202012345", <br/> "email": "user@example.com", "appliedAt": "2026-11-17T10:00:00", <br/> "status": "PENDING", "documentType": "pdf", <br/> "processedAt": null, "rejectionReason": null <br/>} ] } | 구현완료 |
+| GET | /api/admin/verifications/{userId} | 가입 검토 상세 + 서류 열람 주소 (관리자) | Header: <br/> `Authorization: Bearer {accessToken}` (ADMIN) | 200 <br/> { "success": true, "data": { <br/> "applicant": { 목록 항목과 같음 }, <br/> "documentUrl": "https://...(5분 뒤 만료)" <br/>} } | 구현완료 |
+| POST | /api/admin/verifications/{userId}/approve | 가입 승인 (관리자) | Header: <br/> `Authorization: Bearer {accessToken}` (ADMIN) | 200 <br/> { "success": true, "data": null } | 구현완료 |
+| POST | /api/admin/verifications/{userId}/reject | 가입 거절 (관리자) | Header: <br/> `Authorization: Bearer {accessToken}` (ADMIN) <br/> { <br/> "reason": "선택, 200자 이하" <br/>} | 200 <br/> { "success": true, "data": null } | 구현완료 |
 
 - 닉네임 중복확인은 **닉네임만 제공**한다. 학번/이메일 중복확인은 제공하지 않음 (이 학번/이메일로 가입돼 있다는 걸 누구나 조회할 수 있게 되는 user enumeration 방지) — 가입 시도 시 409로만 안내. 확인 시점과 실제 가입 시점 사이에 다른 사람이 선점할 수 있어 최종 검증은 `signup`에서 다시 함
 - 회원가입에 `email`이 **필수**로 추가됨 (비밀번호 찾기용). 이미 가입된 이메일이면 409. 대소문자/앞뒤 공백은 무시하고 비교
@@ -26,6 +30,11 @@
   - 서류 오류: 없음 400 `FILE_EMPTY`, pdf·jpg가 아님 400 `FILE_TYPE_NOT_ALLOWED`, 10MB 초과 413 `FILE_TOO_LARGE`, 저장 실패 503 `FILE_UPLOAD_FAILED`. 학번·닉네임·이메일 중복(409)이면 서류는 저장하지 않는다
   - 가입하면 **승인 대기** 상태가 된다. 지금은 승인 전에도 로그인할 수 있고, 관리자 승인 API가 생긴 뒤 승인 전 로그인을 막는다 (`docs/student-verification-architecture.md` 4단계)
 - 새 비밀번호(가입·변경·재설정)는 64자 이하이면서 **72바이트 이하**여야 한다. 영문·숫자는 1바이트, 한글은 3바이트로 계산하며, 넘으면 400 `INVALID_INPUT_VALUE`
+- 관리자 가입 검토(`/api/admin/verifications`)는 **ADMIN만** 호출할 수 있다. 토큰이 없으면 401, 일반 사용자면 403 `FORBIDDEN`
+  - 목록: `PENDING`은 먼저 가입한 순, `APPROVED`·`REJECTED`는 최근 처리한 순. 검토 없이 승인 상태인 기존 계정은 승인 목록에 나오지 않는다. `processedAt`은 승인일/거절일, `documentType`은 서류가 남아 있을 때(대기 중)만 값이 있다
+  - 상세의 `documentUrl`은 **5분 뒤 만료**된다. 만료되면 상세를 다시 조회해 새 주소를 받는다. 서류가 없으면 null, 주소를 만들지 못하면 503 `FILE_URL_FAILED`
+  - 승인·거절하면 서류를 바로 삭제하고 결과 메일을 보낸다. 메일·삭제가 실패해도 처리는 유지된다(서버 로그로 확인). 거절 사유는 앞뒤 공백을 지우고, 비우면 메일에 사유 줄이 빠진다
+  - 승인 대기가 아닌 계정을 처리하면 409 `VERIFICATION_ALREADY_PROCESSED`, 없는 사용자는 404 `USER_NOT_FOUND`
 - 비밀번호 찾기: `send-code`는 학번이 없거나 이메일이 다르면 404 `PASSWORD_RESET_ACCOUNT_NOT_FOUND`, 60초 안에 재요청하면 429 `VERIFICATION_CODE_RESEND_TOO_FAST`, 재발송을 다 쓰면 429 `PASSWORD_RESET_RESEND_LIMIT_EXCEEDED`, 발송 실패는 503 `EMAIL_SEND_FAILED`. 인증코드는 6자리, 5분 유효. 재발송은 첫 발송을 빼고 하루 5회(한국 시간 자정에 초기화)이고, `resendCount`는 첫 발송이면 0, 재발송이면 n/5회의 n이다
 - 내 정보 조회(`GET /api/users/me`)는 **본인 전용**이라 `studentId`·`email`을 내려준다. `email`은 이메일 기능 이전 가입자면 null, `department`는 가입 때 받지 않아 **현재 항상 null**. `role`은 `USER` 또는 `ADMIN`으로, 프론트가 관리자 화면을 보여줄지 정하는 용도다 (관리자 API는 서버가 따로 403으로 막는다). 이름·학년·부전공·프로필 사진은 마이페이지 디자인 확정 후 추가 예정(필드 추가만 하므로 기존 클라이언트는 영향 없음)
 - 비밀번호 찾기: 서버는 `verify-code` 통과를 기억하지 않는다 — 화면에서 다음 단계로 넘어가는 용도이고, 재설정 요청(`/api/auth/password-reset`)에도 **같은 `code`를 다시 보내야** 한다
@@ -144,6 +153,7 @@
 | 400 | `FILE_TYPE_NOT_ALLOWED` | 허용하지 않는 파일 형식, 또는 확장자·`Content-Type`·실제 내용이 서로 다름. `message`에 허용 형식 포함 (예: `pdf, jpg 파일만 올릴 수 있어요`) |
 | 413 | `FILE_TOO_LARGE` | 파일 용량 초과. API별 한도를 넘으면 `message`에 한도 포함 (예: `10MB 이하 파일만 올릴 수 있어요`), 서버 전체 한도(10MB)를 넘으면 기본 문구 |
 | 503 | `FILE_UPLOAD_FAILED` | 파일 저장소(S3) 업로드 실패 |
+| 503 | `FILE_URL_FAILED` | 파일 열람 주소(presigned URL) 생성 실패 |
 | 400 | `INVALID_VERIFICATION_CODE` | 이메일 변경 인증코드 없음/만료/불일치(사유는 구분하지 않음), 비밀번호 찾기 코드 없음/없는 학번 |
 | 400 | `PASSWORD_RESET_CODE_MISMATCH` | 비밀번호 찾기 인증번호 불일치. `message`에 n/5회 포함 |
 | 400 | `PASSWORD_RESET_CODE_ATTEMPTS_EXCEEDED` | 비밀번호 찾기 인증번호 5회 불일치로 인증 중단 |
@@ -162,6 +172,7 @@
 | 429 | `VERIFICATION_CODE_RESEND_TOO_FAST` | 인증코드 재발송 60초 제한 |
 | 429 | `PASSWORD_RESET_RESEND_LIMIT_EXCEEDED` | 비밀번호 찾기 재발송 하루 5회 초과 |
 | 429 | `LOGIN_LOCKED` | 로그인 5회 실패로 5분 잠금. 남은 시간(초)은 `Retry-After` 헤더 |
+| 409 | `VERIFICATION_ALREADY_PROCESSED` | 관리자가 승인 대기가 아닌(이미 승인·거절된) 가입 신청을 처리하려 함 |
 | 503 | `EMAIL_SEND_FAILED` | 메일 발송 실패 |
 | 404 | `PROFESSOR_NOT_FOUND` | 존재하지 않는 교수 |
 | 404 | `COURSE_NOT_FOUND` | 존재하지 않는 과목 |

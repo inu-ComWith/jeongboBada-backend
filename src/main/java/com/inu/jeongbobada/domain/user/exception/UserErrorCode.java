@@ -27,6 +27,8 @@ public enum UserErrorCode implements BaseErrorCode {
     PASSWORD_RESET_CODE_ATTEMPTS_EXCEEDED(HttpStatus.BAD_REQUEST, "PASSWORD_RESET_CODE_ATTEMPTS_EXCEEDED", "5회 잘못 입력해 인증이 중단되었어요. 인증번호를 다시 받거나 운영진에게 문의해주세요"), // 400
     PASSWORD_RESET_CODE_EXPIRED(HttpStatus.BAD_REQUEST, "PASSWORD_RESET_CODE_EXPIRED", "입력 시간이 초과되었으니 인증번호를 다시 받아주세요"), // 400
     PASSWORD_RESET_SAME_PASSWORD(HttpStatus.BAD_REQUEST, "PASSWORD_RESET_SAME_PASSWORD", "이전과 같은 비밀번호는 쓸 수 없어요"), // 400
+    // 승인 대기가 아닌 계정을 승인·반려하려 할 때 (다른 관리자가 먼저 처리했거나 기존 계정)
+    VERIFICATION_ALREADY_PROCESSED(HttpStatus.CONFLICT, "VERIFICATION_ALREADY_PROCESSED", "이미 처리된 가입 신청이에요"), // 409
     EMAIL_SEND_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "EMAIL_SEND_FAILED", "이메일 발송에 실패했습니다. 잠시 후 다시 시도해주세요"), // 503
     ;
 

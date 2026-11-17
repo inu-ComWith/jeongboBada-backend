@@ -127,9 +127,10 @@ Figma 화면 기준으로 "로그인 없이 보이는 화면(첫 페이지 등)"
 - [x] `@EnableMethodSecurity` 활성화 + `SecurityConfig`에 `accessDeniedHandler` 배선 —
       `@PreAuthorize("hasRole('ADMIN')")`를 쓸 준비는 끝났고, `CustomUserDetails`가 이미
       `ROLE_ADMIN`/`ROLE_USER` 권한을 부여하고 있어 추가 변경 없이 바로 동작함
-- [ ] **실제 관리자 전용 API 없음** — professor/course 컨트롤러가 전부 조회(GET)만 있어서
-      `@PreAuthorize`를 붙일 대상이 아직 없음. 관리자 전용 API(교수/과목 등록·수정 등)가
-      생기면 그 메서드에 애노테이션만 추가하면 됨
+- [x] **첫 관리자 전용 API: 가입 검토** (`/api/admin/verifications`, #142 2단계)
+      `@PreAuthorize` 대신 `SecurityConfig`에서 `/api/admin/**`를 `hasRole("ADMIN")`로 막았다.
+      URL 규칙은 요청 검증(@Valid)보다 먼저 걸려서 토큰 없는 잘못된 요청도 400이 아니라 401이 된다.
+      다른 관리자 API(교수/과목 등록·수정 등)도 `/api/admin/` 아래에 두면 같은 규칙이 적용된다
 - [x] 개인정보 수정 API — 닉네임/비밀번호 변경 ([이슈 #86](https://github.com/inu-jeongbobada/jeongboBada-backend/issues/86))
       `UserController`/`UserService` 신설(`PATCH /api/users/me/nickname`, `PATCH /api/users/me/password`).
       `SecurityConfig`에 `/api/users/me/**` `authenticated()` 추가. 비밀번호 변경 성공 시
@@ -142,10 +143,10 @@ Figma 화면 기준으로 "로그인 없이 보이는 화면(첫 페이지 등)"
 - **관리자 계정 만들기:** 관리자 가입 API나 `data.sql` 시드는 두지 않는다 (비밀번호가 레포에 남고, 몰래 관리자가 될 경로가 생긴다).
   평소처럼 회원가입한 뒤 DB에서 승격하고, 다시 로그인하면 된다 (권한은 로그인할 때 읽는다).
   ```sql
-  update users set role = 'ADMIN' where student_id = '학번';
+  update users set role = 'ADMIN', verification_status = 'APPROVED' where student_id = '학번';
   ```
   - 테이블·컬럼 이름은 소문자로 쓴다. 엔티티에는 `USERS`로 적혀 있지만 실제 테이블은 `users`다. PostgreSQL은 따옴표 없는 이름을 소문자로 바꿔 찾으므로 `USERS`도 동작하지만, `"USERS"`처럼 따옴표를 붙이면 테이블이 없다고 나온다
-  - [ ] 가입 승인 기능이 생기면 위 SQL에 승인 상태 변경도 추가해야 한다 (관리자 본인 계정이 승인 대기에 걸리지 않게)
+  - [x] 승인 상태도 함께 바꾼다. 새로 가입한 계정은 승인 대기(`PENDING`)라, 승인 전 로그인 차단(#142 4단계)이 켜지면 관리자 본인이 로그인하지 못한다
 - [ ] 마이페이지 프로필 필드(이름·학년·부전공·학과 입력, 프로필 사진) — 디자인·프론트 확정 대기. 사진은 공용 파일 업로드(S3, #98) 이후
 
 ### 7. 비밀번호 찾기 (이메일 인증, 3순위) — [이슈 #87](https://github.com/inu-jeongbobada/jeongboBada-backend/issues/87)

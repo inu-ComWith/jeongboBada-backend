@@ -24,7 +24,7 @@
 | 관리자 서류 열람 | 관리자가 열 때마다 presigned GET URL을 새로 만든다. 만료 5분 | 2026-11-15 |
 | 서류 보관 | 승인·반려하면 바로 삭제. 처리되지 않은 서류도 S3 수명주기 규칙으로 업로드 30일 뒤 자동 삭제 | 와이어프레임 안내 문구, 2026-11-15 |
 | 버킷 접근 | 퍼블릭 액세스 차단. 서버(자격 증명)와 presigned URL로만 접근 | #98 |
-| 관리자 API 보호 | `@PreAuthorize("hasRole('ADMIN')")`. 기반(`JwtAccessDeniedHandler`, `@EnableMethodSecurity`)은 이미 있다 | [auth-architecture.md](auth-architecture.md) 6번 |
+| 관리자 API 보호 | `SecurityConfig`에서 `/api/admin/**`를 `hasRole("ADMIN")`로 막는다 (2단계에서 `@PreAuthorize` 대신 URL 규칙으로 정함. 요청 검증보다 먼저 걸려 토큰 없는 요청이 401이 된다) | [auth-architecture.md](auth-architecture.md) 6번 |
 | 별도 업로드 API | 두지 않는다. 서류는 가입·재제출 요청 안에서만 받는다 (로그인 없이 계정과 무관한 파일이 쌓이는 것 방지) | #142 |
 | 성적 인증 기능 | **범위에서 제외**. 가입 서류 중 "성적증명서"는 본인 확인 서류일 뿐 이 기능과 무관 | 2026-11-15 |
 
@@ -69,10 +69,20 @@
 - [x] 프론트 영향 확인: 프론트가 가입 API를 아직 연동하지 않아 깨지는 화면은 없다. 연동할 때 Swagger의 multipart 형식을 따른다 (2026-11-15)
 
 ### 2. 관리자 검토 API (`ROLE_ADMIN`)
-- [ ] 대기·승인·거절 목록 (닉네임, 학번, 이메일, 가입일 + 서류 형식 / 승인일 / 거절일·거절 사유)
-- [ ] 서류 열람 (presigned URL 5분)
-- [ ] 승인 / 반려(사유 선택) → S3 서류 삭제 + 결과 메일
-- [ ] Swagger 자물쇠, 통합 테스트 (일반 사용자는 403)
+API는 `/api/admin/verifications` (`AdminVerificationController`, `AdminVerificationService`). 명세는 `api-spec.md`.
+- [x] 대기·승인·거절 목록 (닉네임, 학번, 이메일, 가입일 + 서류 형식 / 승인일 / 거절일·거절 사유)
+  - `GET ?status=`. 대기는 먼저 가입한 순, 승인·거절은 최근 처리한 순
+  - 검토 없이 승인 상태인 기존 계정(처리 시각 null)은 승인 목록에서 뺀다. 관리자가 처리한 건만 보여주기 위해서다
+  - 승인일·거절일은 `VERIFICATION_PROCESSED_AT` 하나에 저장하고 상태로 구분한다
+  - 페이지 나누기는 없다 (가입 신청 규모가 작고 화면에도 없음)
+- [x] 서류 열람: 상세 조회(`GET /{userId}`) 때마다 presigned URL(5분)을 새로 만든다. 만들지 못하면 503 `FILE_URL_FAILED`
+- [x] 승인 / 반려(사유 선택, 200자) → S3 서류 삭제 + 결과 메일
+  - 행을 잠그고 `PENDING`인지 확인한다. 아니면 409 `VERIFICATION_ALREADY_PROCESSED` (두 관리자가 동시에 처리해도 한 번만 처리)
+  - 서류 삭제와 메일은 **커밋 뒤**(`TransactionSynchronization.afterCommit`)에 한다. 커밋 전에 지우면 롤백됐을 때 서류만 사라진다
+  - 둘 다 실패해도 처리는 유지하고 로그만 남긴다. 이메일이 없는 기존 계정은 메일을 건너뛴다
+- [x] 권한: `SecurityConfig`에서 `/api/admin/**`를 `hasRole("ADMIN")` (토큰 없으면 401, 일반 사용자면 403). 컨트롤러가 아니라 URL로 막아 요청 검증보다 권한 검사가 먼저 걸린다
+- [x] Swagger 자물쇠, 통합 테스트 `AdminVerificationIntegrationTest` (승인 / 거절 사유·메일 / 이미 처리 409 / 없는 사용자 404 / 일반 사용자 403·토큰 없음 401)
+- [ ] 관리자 계정 만들기: 아직 API가 없어 DB에서 직접 바꾼다 (`docs/auth-architecture.md` 관리자 승격 SQL)
 
 ### 3. 반려 후 재제출
 - [ ] 학번 + 비밀번호 + 새 서류 → `PENDING`, 이전 서류 key 교체

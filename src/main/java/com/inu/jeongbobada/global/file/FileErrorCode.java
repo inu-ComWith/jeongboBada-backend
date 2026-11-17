@@ -12,6 +12,7 @@ public enum FileErrorCode implements BaseErrorCode {
     FILE_TYPE_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "FILE_TYPE_NOT_ALLOWED", "올릴 수 없는 파일 형식이에요"), // 400
     // 호출하는 쪽의 최대 크기를 넘었거나, 그보다 먼저 spring.servlet.multipart.max-file-size에 걸린 경우
     FILE_TOO_LARGE(HttpStatus.CONTENT_TOO_LARGE, "FILE_TOO_LARGE", "파일 용량이 너무 커요"), // 413
+    FILE_URL_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "FILE_URL_FAILED", "파일을 불러오지 못했어요. 잠시 후 다시 시도해주세요"), // 503
     FILE_UPLOAD_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "FILE_UPLOAD_FAILED", "파일을 올리지 못했어요. 잠시 후 다시 시도해주세요"), // 503
     ;
 
