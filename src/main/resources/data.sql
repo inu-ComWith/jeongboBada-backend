@@ -5,13 +5,12 @@
 -- course = 학기가 바뀌어도 안 변하는 "과목 자체" (courseCode로 식별)
 -- course_offering = 특정 학년도/학기에 특정 교수가 개설한 강의 (학기마다 새로 들어오거나 갱신됨)
 
--- course_review가 course/professor를 FK로 참조하므로 가장 먼저 지워야 한다
--- (앱을 통해 리뷰를 하나라도 등록한 적이 있으면 course_review에 행이 남아있어서,
---  이걸 안 지우고 course를 지우려 하면 FK 제약 위반으로 기동이 실패한다).
-DELETE FROM course_review;
-DELETE FROM course_offering;
-DELETE FROM course;
-DELETE FROM professor;
+-- 이 파일은 서버가 뜰 때마다 실행된다 (spring.sql.init.mode: always). 배포 서버도 마찬가지다.
+-- 그래서 기존 데이터를 지우지 않고, 이미 있는 행은 건너뛴다 (ON CONFLICT DO NOTHING).
+--   - 예전에는 DELETE 후 다시 넣었는데, 그러면 재시작할 때마다 사용자가 쓴 강의평이 지워지고
+--     교수 댓글·연구실처럼 교수를 참조하는 데이터가 있으면 FK 위반으로 기동이 실패했다
+--   - 이미 들어간 시드를 이 파일에서 고쳐도 기존 DB에는 반영되지 않는다 (관리자가 고친 값을 덮어쓰지 않기 위해서다).
+--     로컬에서 새 시드로 시작하려면 DB를 지우고 다시 띄운다: docker compose down -v && docker compose up -d
 
 INSERT INTO professor (
     professor_id,
@@ -26,7 +25,8 @@ INSERT INTO professor (
 (5, '김영필', '운영체제, 분산 시스템, 클라우드 컴퓨팅', NULL),
 (6, '김도엽', '통신 네트워크 최적화, 머신러닝, 알고리즘 설계', NULL),
 (7, '안승환', '인공지능, 생성모형, 분포학습', NULL),
-(8, '김경원', '무선통신, 무선채널, 무선네트워크', NULL);
+(8, '김경원', '무선통신, 무선채널, 무선네트워크', NULL)
+ON CONFLICT DO NOTHING;
 
 INSERT INTO course (
     course_id,
@@ -46,7 +46,8 @@ INSERT INTO course (
 (9, '운영체제', 'ITE-DEV-009', '프로세스, 스레드, 메모리 및 파일 시스템 등 운영체제의 원리를 학습한다.', TRUE),
 (10, '임베디드컴퓨팅', 'ITE-DEV-010', '임베디드 시스템의 구조와 하드웨어 및 소프트웨어 개발 방법을 학습한다.', TRUE),
 (11, '컴퓨터네트워크', 'ITE-DEV-011', '네트워크 계층 구조와 주요 인터넷 프로토콜의 동작 원리를 학습한다.', TRUE),
-(12, '디지털신호처리', 'ITE-DEV-012', '디지털 신호의 표현, 분석 및 처리에 필요한 기본 이론을 학습한다.', TRUE);
+(12, '디지털신호처리', 'ITE-DEV-012', '디지털 신호의 표현, 분석 및 처리에 필요한 기본 이론을 학습한다.', TRUE)
+ON CONFLICT DO NOTHING;
 
 INSERT INTO course_offering (
     course_offering_id,
@@ -73,7 +74,8 @@ INSERT INTO course_offering (
 (9, 9, 5, 2026, 'FIRST', 'THIRD', 'THIRD', '화 1,2 / 목 1,2', 'MAJOR_CORE', 'RELATIVE', 'OFFLINE', TRUE),
 (10, 10, 5, 2026, 'SECOND', 'FOURTH', 'THIRD', '금 5,6,7', 'MAJOR_ADVANCED', 'ABSOLUTE', 'OFFLINE', TRUE),
 (11, 11, 6, 2026, 'FIRST', 'THIRD', 'THIRD', '월 5,6 / 수 5,6', 'MAJOR_CORE', 'RELATIVE', 'OFFLINE', TRUE),
-(12, 12, 8, 2026, 'SECOND', 'THIRD', 'THIRD', '화 3,4 / 목 3,4', 'MAJOR_ADVANCED', 'RELATIVE', 'OFFLINE', TRUE);
+(12, 12, 8, 2026, 'SECOND', 'THIRD', 'THIRD', '화 3,4 / 목 3,4', 'MAJOR_ADVANCED', 'RELATIVE', 'OFFLINE', TRUE)
+ON CONFLICT DO NOTHING;
 
 -- 위에서 id를 직접 넣었으므로 IDENTITY 시퀀스를 최댓값으로 맞춘다.
 -- PostgreSQL은 id를 직접 넣으면 시퀀스가 따라 올라가지 않아서, 안 맞추면 앱이 처음 저장할 때 id 1부터 다시 써서 PK가 충돌한다.
