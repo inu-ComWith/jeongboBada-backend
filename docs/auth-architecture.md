@@ -144,7 +144,7 @@ Figma 화면 기준으로 "로그인 없이 보이는 화면(첫 페이지 등)"
   ```sql
   update users set role = 'ADMIN' where student_id = '학번';
   ```
-  - 테이블·컬럼 이름은 소문자로 쓴다. 엔티티에는 `USERS`로 적혀 있지만 실제 테이블은 `users`이고, Linux의 MySQL(Docker·운영)은 대소문자를 구분해서 `USERS`로 쓰면 테이블이 없다고 나온다
+  - 테이블·컬럼 이름은 소문자로 쓴다. 엔티티에는 `USERS`로 적혀 있지만 실제 테이블은 `users`다. PostgreSQL은 따옴표 없는 이름을 소문자로 바꿔 찾으므로 `USERS`도 동작하지만, `"USERS"`처럼 따옴표를 붙이면 테이블이 없다고 나온다
   - [ ] 가입 승인 기능이 생기면 위 SQL에 승인 상태 변경도 추가해야 한다 (관리자 본인 계정이 승인 대기에 걸리지 않게)
 - [ ] 마이페이지 프로필 필드(이름·학년·부전공·학과 입력, 프로필 사진) — 디자인·프론트 확정 대기. 사진은 공용 파일 업로드(S3, #98) 이후
 
@@ -171,7 +171,7 @@ PASS 본인인증은 소모임 프로젝트 규모에 비해 비용·행정 부�
 - [x] 비밀번호 찾기 API — `PasswordResetController`/`PasswordResetService` (`send-code` → `verify-code` → 재설정, 코드는 1회 소모)
 - [x] 이메일 등록/변경 API (2단계) — `UserController` + `EmailChangeService`
 - [x] 테스트 — 서비스 단위 테스트(`VerificationCodeManagerTest`, `PasswordResetServiceTest`, `EmailChangeServiceTest`)와
-      실제 MySQL로 API 전체 흐름을 통과시키는 통합 테스트(`PasswordResetIntegrationTest`)
+      실제 DB(PostgreSQL)로 API 전체 흐름을 통과시키는 통합 테스트(`PasswordResetIntegrationTest`)
 - [x] 설정값 4곳 반영 — `application.yml`(로컬), `application.yml.example`, `docker-compose.yml`(`SPRING_MAIL_*`), `.env`/`.env.example`(`MAIL_*`)
 
 **이메일 등록/변경 (로그인 필요, 2단계)**

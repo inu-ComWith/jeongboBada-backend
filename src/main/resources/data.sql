@@ -74,3 +74,9 @@ INSERT INTO course_offering (
 (10, 10, 5, 2026, 'SECOND', 'FOURTH', 'THIRD', '금 5,6,7', 'MAJOR_ADVANCED', 'ABSOLUTE', 'OFFLINE', TRUE),
 (11, 11, 6, 2026, 'FIRST', 'THIRD', 'THIRD', '월 5,6 / 수 5,6', 'MAJOR_CORE', 'RELATIVE', 'OFFLINE', TRUE),
 (12, 12, 8, 2026, 'SECOND', 'THIRD', 'THIRD', '화 3,4 / 목 3,4', 'MAJOR_ADVANCED', 'RELATIVE', 'OFFLINE', TRUE);
+
+-- 위에서 id를 직접 넣었으므로 IDENTITY 시퀀스를 최댓값으로 맞춘다.
+-- PostgreSQL은 id를 직접 넣으면 시퀀스가 따라 올라가지 않아서, 안 맞추면 앱이 처음 저장할 때 id 1부터 다시 써서 PK가 충돌한다.
+SELECT setval(pg_get_serial_sequence('professor', 'professor_id'), (SELECT MAX(professor_id) FROM professor));
+SELECT setval(pg_get_serial_sequence('course', 'course_id'), (SELECT MAX(course_id) FROM course));
+SELECT setval(pg_get_serial_sequence('course_offering', 'course_offering_id'), (SELECT MAX(course_offering_id) FROM course_offering));
