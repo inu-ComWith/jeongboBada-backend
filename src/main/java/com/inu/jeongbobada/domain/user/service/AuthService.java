@@ -88,7 +88,8 @@ public class AuthService {
         }
     }
 
-    // 원래 예외(409 등)를 살려야 하므로 삭제 실패는 로그만 남긴다. 남은 서류는 S3 수명주기 규칙(30일)이 지운다
+    // 원래 예외(409 등)를 살려야 하므로 삭제 실패는 로그만 남긴다. 남은 서류는 로그의 key를 보고 지운다
+    // (AWS S3에서는 수명주기 규칙이 30일 뒤 지운다. Supabase Storage는 수명주기 규칙이 없다)
     private void deleteUploadedDocument(String documentKey, RuntimeException cause) {
         try {
             fileStorage.delete(documentKey);

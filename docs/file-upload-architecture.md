@@ -8,23 +8,25 @@
 | 항목 | 결정 | 근거 |
 |---|---|---|
 | 업로드 방식 | 서버 경유(multipart). 서버가 크기·형식을 직접 검사한다 | #98, 2026-09-26 |
-| 저장소 | AWS S3, 버킷은 비공개 | #98, 2026-09-26 |
+| 저장소 | S3 API(AWS SDK v2) 하나로 쓴다. 지금 배포는 **Supabase Storage**(S3 호환), 최종 배포는 AWS S3. 코드는 같고 `aws.s3.endpoint`만 바꾼다. 버킷은 비공개 | #98, #175, 2026-11-17 |
 | 열람·다운로드 | 서버가 권한을 확인한 뒤 짧게 만료되는 presigned GET URL을 준다 | #98 |
 | 위치 | `global`에 공용 컴포넌트 하나. 허용 형식·최대 크기는 호출하는 도메인이 넘긴다 | #98 |
 | 신분 확인 서류 | pdf·jpg, 최대 10MB, 1개. 승인·반려 후 바로 삭제. 열람 URL 만료 5분 | [wireframe-spec.md](wireframe-spec.md) 1번, [student-verification-architecture.md](student-verification-architecture.md) |
-| 수명주기 규칙 | `verification/`은 업로드 30일 뒤 자동 삭제. 검토(보통 1~2일)에 충분하고, 지우지 못한 서류가 남지 않게 한다 | 2026-11-15 |
+| 수명주기 규칙 | AWS S3에서는 `verification/`을 업로드 30일 뒤 자동 삭제한다. **Supabase는 수명주기 규칙을 지원하지 않아** 그 기간에는 자동 삭제 없이 승인·반려 때만 지우고, 삭제 실패는 로그를 보고 수동 정리한다. AWS로 옮길 때 30일 규칙을 다시 만든다 | 2026-11-15, #175 |
 | 성적 인증 | 범위에서 제외 | 2026-11-15 |
 | 강의 자료 첨부 | 강의평이 아니라 `Material`(학습자료 탭)에 붙인다 | [wireframe-spec.md](wireframe-spec.md) 10번 |
 
 ## 진행 환경
 
 해외 결제 카드가 없어 개인 AWS 계정을 바로 만들 수 없다. 그래서 단계를 나눈다.
+Learner Lab 키는 4시간마다 만료돼 배포 서버에 쓸 수 없어서, 배포는 Supabase Storage로 한다 (DB도 Supabase, #174).
 
 | 단계 | 환경 | 확인하는 것 |
 |---|---|---|
 | 1. 코드 작성 | AWS 없음. S3 호출은 테스트에서 `@MockitoBean`으로 대체 | 검증 규칙, 에러 응답, 저장 흐름. CI도 이 상태로 통과해야 한다 |
 | 2. 실제 S3 확인 | 연구실에서 개설 요청한 AWS Academy Learner Lab ($50 한도) | 실제 업로드·presigned URL·삭제 동작 |
-| 3. 실제 서비스 | 미정 (팀 계정) | — |
+| 3. 배포 (지금) | Render + **Supabase Storage** (S3 호환 API) | 배포 서버에서 서류 첨부 가입·관리자 열람 (#175) |
+| 4. 배포 (최종) | AWS (계정·결제 수단 준비 후) | `aws.s3.endpoint`를 비우고 수명주기 규칙(30일) 다시 만들기 |
 
 Learner Lab에서 지킬 것:
 - **실제 학생 서류를 올리지 않는다.** 테스트용 가짜 pdf·jpg만 쓴다. 코스가 끝나면 계정과 데이터가 삭제된다
@@ -46,6 +48,7 @@ Learner Lab에서 지킬 것:
 |---|---|---|
 | `aws.region` | `us-east-1` | 필수 (`@Validated`) |
 | `aws.s3.bucket` | `jeongbobada-dev` | 필수 (`@Validated`) |
+| `aws.s3.endpoint` | `https://<project_ref>.storage.supabase.co/storage/v1/s3` | 선택. 있으면 그 주소 + path-style로 붙고, 비우면 AWS S3 (#175) |
 | `spring.servlet.multipart.max-file-size` | `10MB` | Spring 기본값이 1MB라 반드시 올려야 한다 |
 | `spring.servlet.multipart.max-request-size` | `11MB` | 파일 + 나머지 폼 필드 |
 
@@ -77,7 +80,8 @@ AGENTS.md 설정값 체크리스트 4곳 + `application-test.properties`(가짜 
 ### 트랜잭션
 S3는 DB 트랜잭션에 묶이지 않는다.
 - 업로드 성공 후 DB 저장이 실패하면 S3에 파일만 남는다 → 실패 시 방금 올린 파일을 지운다
-- DB 처리 뒤 S3 삭제가 실패하면 파일만 남는다 → 처리는 되돌리지 않고 key를 에러 로그로 남긴다. `verification/`은 수명주기 규칙(30일)이 한 번 더 지운다
+- DB 처리 뒤 S3 삭제가 실패하면 파일만 남는다 → 처리는 되돌리지 않고 key를 에러 로그로 남긴다
+  - AWS S3에서는 `verification/` 수명주기 규칙(30일)이 한 번 더 지운다. Supabase 기간에는 이 로그를 보고 수동으로 지운다
 
 ## 진행 상태
 
@@ -112,6 +116,18 @@ S3는 DB 트랜잭션에 묶이지 않는다.
 - [x] 버킷 생성(퍼블릭 액세스 차단 유지)
 - [x] `verification/` 수명주기 규칙 (`verification-cleanup`, 업로드 30일 뒤 만료)
 - [x] 로컬에서 임시 키로 업로드·presigned URL·삭제 확인 (가짜 파일만, `S3_TEST_BUCKET`을 주고 `S3RealBucketTest` 실행해 통과)
+
+### 4. Supabase Storage 연결 (#175)
+Supabase 문서 기준(2026-11-15): Put/Get/Delete/HeadObject와 presigned URL(SigV4) 지원, 수명주기 규칙 미지원, 무료 플랜 저장 1GB·파일 최대 50MB·7일 비활성 시 일시 중지.
+- [x] `aws.s3.endpoint`(선택) 추가. 있으면 `S3Client`·`S3Presigner` 둘 다 `endpointOverride` + path-style
+  - presigned URL도 같은 주소·방식이어야 열린다. `S3ConfigTest`가 endpoint 유무에 따라 URL 주소가 맞는지 확인
+  - `S3Config` 빈은 `AwsCredentialsProvider` 인터페이스로 받는다 (테스트에서 가짜 키를 넣기 위해)
+- [x] 설정값 체크리스트 반영 (`application.yml.example`, `docker-compose.yml`, `.env.example`. 선택값이라 테스트 설정은 그대로)
+- [x] `.env`의 `AWS_SESSION_TOKEN=`(빈 값)은 SDK가 세션 토큰 없음으로 처리하는 것 확인 (Supabase 키는 두 개뿐)
+- [ ] Supabase: 비공개 버킷 생성, Storage 설정에서 S3 프로토콜 연결 켜기, access key 발급
+- [ ] `S3RealBucketTest`를 Supabase 버킷으로 실행 (`S3_TEST_ENDPOINT` + 프로젝트 리전 + 발급한 키)
+  - 실패하면 확인할 것: AWS SDK 2.30 이후 기본으로 붙는 체크섬 헤더를 거부하는지
+- [ ] Render 환경변수 `AWS_REGION`, `AWS_S3_BUCKET`, `AWS_S3_ENDPOINT`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` 등록 → 배포 서버에서 서류 첨부 가입 확인
 
 ## 결정이 필요한 것
 - [ ] 학습자료 허용 파일 형식·최대 크기 (와이어프레임 미정)

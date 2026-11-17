@@ -60,11 +60,14 @@ cors:
 
 # 파일 업로드(S3). 비밀값이 아니므로 예시를 채워둔다. 버킷은 각자 쓰는 버킷 이름으로 바꾼다.
 # access key·secret은 여기 넣지 않는다. 환경변수 AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
-# AWS_SESSION_TOKEN(Learner Lab 임시 키)으로 넣으면 SDK가 찾는다. 없어도 서버는 뜨고 업로드만 실패한다.
+# AWS_SESSION_TOKEN(Learner Lab 임시 키) 또는 ~/.aws/credentials로 넣으면 SDK가 찾는다. 없어도 서버는 뜨고 업로드만 실패한다.
 aws:
   region: us-east-1
   s3:
     bucket: jeongbobada-dev
+    # S3 호환 저장소 주소. Supabase Storage면 https://<project_ref>.storage.supabase.co/storage/v1/s3 를 넣고
+    # region을 Supabase 프로젝트 리전으로 바꾼다. AWS S3(Learner Lab 등)를 쓰면 비워둔다 (#175)
+    endpoint:
 
 springdoc:
   swagger-ui:
