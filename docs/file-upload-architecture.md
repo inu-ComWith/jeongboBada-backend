@@ -124,9 +124,11 @@ Supabase 문서 기준(2026-11-15): Put/Get/Delete/HeadObject와 presigned URL(S
   - `S3Config` 빈은 `AwsCredentialsProvider` 인터페이스로 받는다 (테스트에서 가짜 키를 넣기 위해)
 - [x] 설정값 체크리스트 반영 (`application.yml.example`, `docker-compose.yml`, `.env.example`. 선택값이라 테스트 설정은 그대로)
 - [x] `.env`의 `AWS_SESSION_TOKEN=`(빈 값)은 SDK가 세션 토큰 없음으로 처리하는 것 확인 (Supabase 키는 두 개뿐)
-- [ ] Supabase: 비공개 버킷 생성, Storage 설정에서 S3 프로토콜 연결 켜기, access key 발급
-- [ ] `S3RealBucketTest`를 Supabase 버킷으로 실행 (`S3_TEST_ENDPOINT` + 프로젝트 리전 + 발급한 키)
-  - 실패하면 확인할 것: AWS SDK 2.30 이후 기본으로 붙는 체크섬 헤더를 거부하는지
+- [x] Supabase: 프로젝트(West US Oregon `us-west-2`, Render와 같은 지역), 비공개 버킷 `jeongbobada-documents`, S3 프로토콜 연결(기본으로 켜져 있음), access key 발급 (2026-11-17)
+  - 키는 용도별로 따로 만든다 (로컬 확인용, Render용). 하나가 새면 그 키만 지운다
+  - 프로젝트 생성 시 Data API는 끄고 automatic RLS는 켰다 (서버가 JDBC로만 접근하므로 테이블을 REST로 노출하지 않는다)
+- [x] `S3RealBucketTest`를 Supabase 버킷으로 실행해 통과: 업로드 → presigned URL로 내려받기 → 삭제 (2026-11-17)
+  - AWS SDK 기본 체크섬 헤더도 문제없었다. 별도 설정 없이 endpoint + path-style만으로 동작
 - [ ] Render 환경변수 `AWS_REGION`, `AWS_S3_BUCKET`, `AWS_S3_ENDPOINT`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` 등록 → 배포 서버에서 서류 첨부 가입 확인
 
 ## 결정이 필요한 것
