@@ -70,6 +70,8 @@ services:
       # application.yml.example의 aws.*과 동일 (파일 업로드, S3). region·bucket은 비밀값이 아니라 기본값을 둔다.
       AWS_REGION: ${AWS_REGION:-us-east-1}
       AWS_S3_BUCKET: ${AWS_S3_BUCKET:-jeongbobada-dev}
+      # S3 호환 저장소(Supabase Storage) 주소. 비우면 AWS S3로 붙는다 (#175)
+      AWS_S3_ENDPOINT: ${AWS_S3_ENDPOINT:-}
       # S3 자격 증명. AWS SDK가 이 이름의 환경변수를 직접 읽는다 (설정 파일·이 파일에 값을 두지 않는다).
       # 비워두면 backend는 정상 기동하고, 업로드만 503으로 실패한다 (.env.example 참고).
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}

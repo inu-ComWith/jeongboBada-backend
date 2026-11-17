@@ -22,7 +22,7 @@
 | 결과 안내 | 승인·반려하면 메일을 보낸다 (기존 메일 발송 재사용) | [wireframe-spec.md](wireframe-spec.md) 1번 |
 | 관리자 화면 | 프론트 안의 관리자 페이지 4장: 대기 목록 / 서류 검토 / 승인 목록 / 거절 목록. 검색 없음, 대기는 먼저 가입한 순. 반려 사유는 선택 입력 | #142 (피그마, 2026-09-30) |
 | 관리자 서류 열람 | 관리자가 열 때마다 presigned GET URL을 새로 만든다. 만료 5분 | 2026-11-15 |
-| 서류 보관 | 승인·반려하면 바로 삭제. 처리되지 않은 서류도 S3 수명주기 규칙으로 업로드 30일 뒤 자동 삭제 | 와이어프레임 안내 문구, 2026-11-15 |
+| 서류 보관 | 승인·반려하면 바로 삭제. AWS S3에서는 처리되지 않은 서류도 수명주기 규칙으로 업로드 30일 뒤 자동 삭제. **Supabase Storage 기간에는 자동 삭제가 없다**(수명주기 규칙 미지원, #175) | 와이어프레임 안내 문구, 2026-11-15 |
 | 버킷 접근 | 퍼블릭 액세스 차단. 서버(자격 증명)와 presigned URL로만 접근 | #98 |
 | 관리자 API 보호 | `SecurityConfig`에서 `/api/admin/**`를 `hasRole("ADMIN")`로 막는다 (2단계에서 `@PreAuthorize` 대신 URL 규칙으로 정함. 요청 검증보다 먼저 걸려 토큰 없는 요청이 401이 된다) | [auth-architecture.md](auth-architecture.md) 6번 |
 | 별도 업로드 API | 두지 않는다. 서류는 가입·재제출 요청 안에서만 받는다 (로그인 없이 계정과 무관한 파일이 쌓이는 것 방지) | #142 |
@@ -30,7 +30,7 @@
 
 ### 열람 URL과 서류 보관을 따로 정한 이유
 - URL은 "서류 보기"를 누를 때마다 새로 만들어지므로, 짧게 만료돼도 관리자가 확인하는 데 문제가 없다. 밖으로 새도 금방 못 쓰게 되니 짧을수록 안전하다
-- 서류는 30일 뒤 자동 삭제된다. 검토는 보통 1~2일이라 충분하고, 삭제에 실패했거나 처리되지 않은 개인정보 서류가 계속 남지 않게 한다
+- AWS S3에서는 서류가 30일 뒤 자동 삭제된다. 검토는 보통 1~2일이라 충분하고, 삭제에 실패했거나 처리되지 않은 개인정보 서류가 계속 남지 않게 한다. Supabase 기간에는 이 자동 삭제가 없다
   - 30일 안에 처리하지 못해 서류가 지워졌으면, 관리자가 반려하고 사용자가 다시 제출하게 한다
 
 ## 흐름
@@ -59,7 +59,7 @@
 - [x] `POST /api/auth/signup` multipart 전환, 서류 필수
   - 폼 필드와 서류(`file`)를 `SignupRequest` 하나로 받는다(`@ModelAttribute`). Swagger에서 칸이 펼쳐져 바로 시험할 수 있다
   - 서류가 없으면 Spring 기본 400 대신 `FILE_EMPTY`가 나가도록 `file`은 필수로 두지 않고 `FileStorage`가 검사한다
-  - 중복 확인 → 업로드 → `saveAndFlush` 순서. 저장이 실패하면 올린 서류를 지운다 (삭제 실패는 로그만, 수명주기 규칙이 정리)
+  - 중복 확인 → 업로드 → `saveAndFlush` 순서. 저장이 실패하면 올린 서류를 지운다 (삭제 실패는 로그만. AWS에서는 수명주기 규칙이 정리, Supabase에서는 수동 정리)
   - JSON으로 보내면 415이고 `message`에 `multipart/form-data`를 안내한다 (`GlobalExceptionHandler.handleHttpMediaTypeNotSupported`)
 - [x] `api-spec.md`, `erd.md` 수정
 - [x] 통합 테스트 `SignupVerificationDocumentIntegrationTest` (성공 / 서류 없음 / 형식 오류 / 기존 계정 기본값), 동시 가입 시 서류 정리는 `ConcurrentSignupIntegrationTest`

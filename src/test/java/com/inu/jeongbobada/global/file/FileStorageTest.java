@@ -49,7 +49,7 @@ class FileStorageTest {
             .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("test-key", "test-secret")))
             .build();
         fileStorage = new FileStorage(s3Client, s3Presigner,
-            new AwsProperties("us-east-1", new AwsProperties.S3("test-bucket")));
+            new AwsProperties("us-east-1", new AwsProperties.S3("test-bucket", null)));
     }
 
     @AfterEach

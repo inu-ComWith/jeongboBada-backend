@@ -23,6 +23,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 // S3_TEST_BUCKET이 있을 때만 돈다 (CI에는 없어서 자동 skip). 자격 증명은 S3Config와 같은 방식(환경변수)으로 찾는다.
 //   S3_TEST_BUCKET=버킷 AWS_REGION=us-east-1 AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_SESSION_TOKEN=... \
 //     ./gradlew test --tests '*S3RealBucketTest'
+// Supabase Storage면 S3_TEST_ENDPOINT(https://<project_ref>.storage.supabase.co/storage/v1/s3)와 프로젝트 리전, 대시보드에서 발급한
+// access key 두 개(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)를 주고 AWS_SESSION_TOKEN은 넣지 않는다.
 // 가짜 pdf만 올린다. 실제 학생 서류를 쓰지 말 것 (docs/file-upload-architecture.md).
 @EnabledIfEnvironmentVariable(named = "S3_TEST_BUCKET", matches = ".+")
 class S3RealBucketTest {
@@ -33,7 +35,7 @@ class S3RealBucketTest {
     void 업로드한_파일을_presigned_URL로_받고_삭제한다() throws Exception {
         AwsProperties properties = new AwsProperties(
             System.getenv().getOrDefault("AWS_REGION", "us-east-1"),
-            new AwsProperties.S3(System.getenv("S3_TEST_BUCKET")));
+            new AwsProperties.S3(System.getenv("S3_TEST_BUCKET"), System.getenv("S3_TEST_ENDPOINT")));
         S3Config config = new S3Config();
 
         try (var credentials = config.awsCredentialsProvider();
