@@ -22,8 +22,14 @@ public class CourseService {
 
 
     // 과목 리스트 전체 조회 (이번 학기 개설된 강의 기준)
-    public List<CourseListResDto> getCourses() {
-        return courseOfferingRepository.findAllByActiveTrue()
+    public List<CourseListResDto> getCourses(String keyword) {
+        String normalizedKeyword = keyword.replaceAll("\\s+", "");
+
+        var offerings = normalizedKeyword.isEmpty()
+            ? courseOfferingRepository.findAllByActiveTrue()
+            : courseOfferingRepository.searchActiveByKeyword(normalizedKeyword);
+
+        return offerings
             .stream()
             .map(CourseListResDto::from)
             .toList();

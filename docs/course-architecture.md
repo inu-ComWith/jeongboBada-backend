@@ -54,6 +54,7 @@ CourseReview (기존 + professor 추가)
 ## API 영향
 
 - `GET /api/courses` — **이번 학기 개설 강의(활성 CourseOffering) 기준으로 한 줄씩** 응답. `courseId`는 Course의 안정적인 id라서, 이 값으로 상세/후기 조회를 계속 이어갈 수 있다. (기존엔 목록 응답에 courseId가 아예 없던 버그가 있었음 — 이번에 같이 해결됨)
+  - 선택 쿼리 파라미터 `keyword`로 강의명·교수명 부분 일치 검색. 검색어와 저장된 이름의 공백을 제거해 비교하고, 빈 검색어는 전체 목록을 반환한다.
 - `GET /api/courses/{courseId}` — Course 기본 정보 + 그 과목의 활성 `CourseOffering` 목록(교수/시간표/학점 등)을 함께 반환.
 - `POST /api/courses/{courseId}/reviews` — 요청 바디에 `professorId`가 추가됨 (같은 과목도 교수마다 리뷰를 따로 남길 수 있어서). 서버는 그 `(course, professor)` 조합으로 실제 개설된 적이 있는지(`CourseOffering` 존재 여부) 검증 후 저장.
   - 로그인 필요 — `SecurityConfig`에서 **POST만** `authenticated()` (조회 GET은 공개). 컨트롤러 null 체크 대신 여기서 막아야 토큰 없는 잘못된 요청이 400이 아니라 401이 된다.
@@ -65,6 +66,7 @@ CourseReview (기존 + professor 추가)
 - [x] `Course` / `CourseOffering` 엔티티 분리
 - [x] `CourseRepository`, `CourseOfferingRepository`
 - [x] `GET /api/courses`, `GET /api/courses/{courseId}` — 새 구조로 마이그레이션, 로컬에서 응답 확인 완료
+- [x] `GET /api/courses?keyword=` — 강의명·교수명 부분 일치 검색(공백 무시, 최대 50자)
 - [x] `CourseReview`에 `professor` FK 추가, unique 제약 `(user, course, professor)`로 변경
 - [x] `POST .../reviews`에 `professorId` 검증 로직 추가 (컴파일/단위테스트만 확인, **실제 로그인 붙여서 수동 테스트는 아직 안 함**)
 - [x] 강의평 작성 요청 검증·중복 작성 409 (#105) — 통합 테스트 `CourseReviewCreateIntegrationTest`
