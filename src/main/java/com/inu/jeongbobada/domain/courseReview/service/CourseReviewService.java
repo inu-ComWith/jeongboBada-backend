@@ -47,8 +47,9 @@ public class CourseReviewService {
             .orElseThrow(() -> new BusinessException(ProfessorErrorCode.PROFESSOR_NOT_FOUND));
 
         // 이 교수가 실제로 이 과목을 개설한 적 있는지 확인 (엉뚱한 과목-교수 조합으로 후기가 달리는 것 방지)
-        courseOfferingRepository.findByCourse_CourseIdAndProfessor_ProfessorId(courseId, professor.getProfessorId())
-            .orElseThrow(() -> new BusinessException(CourseErrorCode.COURSE_OFFERING_NOT_FOUND));
+        if (!courseOfferingRepository.existsByCourse_CourseIdAndProfessor_ProfessorId(courseId, professor.getProfessorId())) {
+            throw new BusinessException(CourseErrorCode.COURSE_OFFERING_NOT_FOUND);
+        }
 
         // 같은 사람이 같은 강의(과목+교수)에 두 번 쓰는 것 방지. 확인과 저장 사이 동시 요청은
         // DB UNIQUE에 걸려 전역 핸들러가 409 DUPLICATE_RESOURCE로 응답한다 (#118)
