@@ -67,6 +67,7 @@ CourseReview (기존 + professor 추가)
 - [x] `CourseRepository`, `CourseOfferingRepository`
 - [x] `GET /api/courses`, `GET /api/courses/{courseId}` — 새 구조로 마이그레이션, 로컬에서 응답 확인 완료
 - [x] `GET /api/courses?keyword=` — 강의명·교수명 부분 일치 검색(공백 무시, 최대 50자)
+- [x] `GET /api/courses?keyword=` — 강의명·교수명 초성 검색
 - [x] `GET /api/courses?page=&size=` — DB 페이징 및 `totalElements`, `totalPages`, `hasNext` 응답
 - [x] `CourseReview`에 `professor` FK 추가, unique 제약 `(user, course, professor)`로 변경
 - [x] `POST .../reviews`에 `professorId` 검증 로직 추가 (컴파일/단위테스트만 확인, **실제 로그인 붙여서 수동 테스트는 아직 안 함**)

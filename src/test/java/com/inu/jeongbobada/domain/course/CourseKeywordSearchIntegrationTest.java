@@ -133,6 +133,19 @@ class CourseKeywordSearchIntegrationTest {
     }
 
     @Test
+    void 강의명과_교수명을_초성으로_검색한다() throws Exception {
+        mockMvc.perform(get("/api/courses")
+                .param("keyword", "ㄱㅅㅈㄹㄱㅈ"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.courses[*].courseId", hasItem(course.getCourseId().intValue())));
+
+        mockMvc.perform(get("/api/courses")
+                .param("keyword", "ㄱㅅㄱㅅ"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.courses[*].courseId", hasItem(course.getCourseId().intValue())));
+    }
+
+    @Test
     void 검색어를_생략하면_전체_활성_강의를_반환한다() throws Exception {
         mockMvc.perform(get("/api/courses"))
             .andExpect(status().isOk())

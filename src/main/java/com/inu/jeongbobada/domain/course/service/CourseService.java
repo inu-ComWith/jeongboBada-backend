@@ -30,9 +30,22 @@ public class CourseService {
         String normalizedKeyword = keyword.replaceAll("\\s+", "");
         PageRequest pageable = PageRequest.of(page, size);
 
-        Page<CourseOffering> offeringPage = normalizedKeyword.isEmpty()
-            ? courseOfferingRepository.findAllActive(pageable)
-            : courseOfferingRepository.searchActiveByKeyword(normalizedKeyword, pageable);
+        Page<CourseOffering> offeringPage;
+
+        if (normalizedKeyword.isEmpty()) {
+            offeringPage = courseOfferingRepository.findAllActive(pageable);
+        } else if (isInitialConsonantKeyword(normalizedKeyword)) {
+            String initialPattern = toInitialConsonantPattern(normalizedKeyword);
+            offeringPage = courseOfferingRepository.searchActiveByInitialConsonant(
+                initialPattern,
+                pageable
+            );
+        } else {
+            offeringPage = courseOfferingRepository.searchActiveByKeyword(
+                normalizedKeyword,
+                pageable
+            );
+        }
 
         List<CourseListResDto> courses = offeringPage.getContent()
             .stream()
@@ -47,6 +60,44 @@ public class CourseService {
             offeringPage.getTotalPages(),
             offeringPage.hasNext()
         );
+    }
+
+    private boolean isInitialConsonantKeyword(String keyword) {
+        String initialConsonants = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ";
+
+        return keyword.chars()
+            .allMatch(character -> initialConsonants.indexOf(character) >= 0);
+    }
+
+    private String toInitialConsonantPattern(String keyword) {
+        StringBuilder pattern = new StringBuilder();
+
+        for (char consonant : keyword.toCharArray()) {
+            pattern.append(switch (consonant) {
+                case 'ㄱ' -> "[가-깋]";
+                case 'ㄲ' -> "[까-낗]";
+                case 'ㄴ' -> "[나-닣]";
+                case 'ㄷ' -> "[다-딯]";
+                case 'ㄸ' -> "[따-띻]";
+                case 'ㄹ' -> "[라-맇]";
+                case 'ㅁ' -> "[마-밓]";
+                case 'ㅂ' -> "[바-빟]";
+                case 'ㅃ' -> "[빠-삫]";
+                case 'ㅅ' -> "[사-싷]";
+                case 'ㅆ' -> "[싸-앃]";
+                case 'ㅇ' -> "[아-잏]";
+                case 'ㅈ' -> "[자-짛]";
+                case 'ㅉ' -> "[짜-찧]";
+                case 'ㅊ' -> "[차-칳]";
+                case 'ㅋ' -> "[카-킿]";
+                case 'ㅌ' -> "[타-팋]";
+                case 'ㅍ' -> "[파-핗]";
+                case 'ㅎ' -> "[하-힣]";
+                default -> throw new IllegalArgumentException("지원하지 않는 초성입니다.");
+            });
+        }
+
+        return pattern.toString();
     }
 
 

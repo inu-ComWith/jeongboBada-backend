@@ -62,6 +62,38 @@ public interface CourseOfferingRepository extends JpaRepository<CourseOffering, 
         Pageable pageable
     );
 
+    @Query(
+        value = """
+            select offering
+            from CourseOffering offering
+            join fetch offering.course course
+            join fetch offering.professor professor
+            where offering.active = true
+              and (
+                regexp_like(replace(course.courseName, ' ', ''), :initialPattern)
+                or regexp_like(replace(professor.professorName, ' ', ''), :initialPattern)
+              )
+            order by collate(course.courseName as ucs_basic) asc,
+                     collate(professor.professorName as ucs_basic) asc,
+                     offering.courseOfferingId asc
+            """,
+        countQuery = """
+            select count(offering)
+            from CourseOffering offering
+            join offering.course course
+            join offering.professor professor
+            where offering.active = true
+              and (
+                regexp_like(replace(course.courseName, ' ', ''), :initialPattern)
+                or regexp_like(replace(professor.professorName, ' ', ''), :initialPattern)
+              )
+            """
+    )
+    Page<CourseOffering> searchActiveByInitialConsonant(
+        @Param("initialPattern") String initialPattern,
+        Pageable pageable
+    );
+
     List<CourseOffering> findAllByCourse_CourseIdAndActiveTrue(Long courseId);
 
     // 같은 과목·교수 조합은 학기마다 한 건씩 개설될 수 있어서 한 건만 꺼내면 두 학기째부터 500이 난다 (#161).
