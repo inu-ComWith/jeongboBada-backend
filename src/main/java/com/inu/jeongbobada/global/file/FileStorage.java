@@ -17,6 +17,8 @@ import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignReques
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.Set;
@@ -67,9 +69,22 @@ public class FileStorage {
 
     // 만료 시간은 쓰는 곳마다 다르다 (관리자 서류 열람, 학습자료 다운로드 등)
     public String presignedGetUrl(String key, Duration expiresIn) {
+        return presign(GetObjectRequest.builder().bucket(bucket).key(key).build(), expiresIn);
+    }
+
+    // 내려받을 때 원래 파일명으로 저장되게 한다 (key는 UUID라 그대로 받으면 파일명이 알아보기 어렵다).
+    // 한글 파일명도 깨지지 않게 RFC 5987 형식(filename*=UTF-8'')으로 넣는다
+    public String presignedDownloadUrl(String key, Duration expiresIn, String downloadFileName) {
+        String encoded = URLEncoder.encode(downloadFileName, StandardCharsets.UTF_8).replace("+", "%20");
+        return presign(GetObjectRequest.builder().bucket(bucket).key(key)
+            .responseContentDisposition("attachment; filename*=UTF-8''" + encoded)
+            .build(), expiresIn);
+    }
+
+    private String presign(GetObjectRequest getObjectRequest, Duration expiresIn) {
         GetObjectPresignRequest request = GetObjectPresignRequest.builder()
             .signatureDuration(expiresIn)
-            .getObjectRequest(GetObjectRequest.builder().bucket(bucket).key(key).build())
+            .getObjectRequest(getObjectRequest)
             .build();
         return s3Presigner.presignGetObject(request).url().toString();
     }
@@ -87,7 +102,7 @@ public class FileStorage {
             .filter(candidate -> candidate.hasExtension(extension))
             .findFirst()
             .orElseThrow(() -> typeNotAllowed(allowedTypes));
-        if (!type.contentType().equals(file.getContentType()) || !type.matchesSignature(head(file, type.signatureLength()))) {
+        if (!type.acceptsContentType(file.getContentType()) || !type.matchesSignature(head(file, type.signatureLength()))) {
             throw typeNotAllowed(allowedTypes);
         }
         return type;

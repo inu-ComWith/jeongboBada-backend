@@ -53,6 +53,14 @@ class S3RealBucketTest {
                     HttpResponse.BodyHandlers.ofByteArray());
                 assertThat(download.statusCode()).isEqualTo(200);
                 assertThat(download.body()).isEqualTo(FAKE_PDF);
+
+                // 학습자료 내려받기: 원래 파일명(한글)으로 저장되게 Content-Disposition이 붙는지 (#187)
+                String namedUrl = fileStorage.presignedDownloadUrl(key, Duration.ofMinutes(1), "자료 정리.pdf");
+                HttpResponse<byte[]> named = http.send(HttpRequest.newBuilder(URI.create(namedUrl)).build(),
+                    HttpResponse.BodyHandlers.ofByteArray());
+                assertThat(named.statusCode()).isEqualTo(200);
+                assertThat(named.headers().firstValue("Content-Disposition"))
+                    .hasValue("attachment; filename*=UTF-8''%EC%9E%90%EB%A3%8C%20%EC%A0%95%EB%A6%AC.pdf");
             } finally {
                 fileStorage.delete(key);
             }

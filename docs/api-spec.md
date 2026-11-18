@@ -89,6 +89,24 @@
 | DELETE | /api/courses/{courseId}/reviews/{reviewId} | 본인이 작성한 수업 후기 삭제 (로그인 필요) | Header: <br/> `Authorization: Bearer {accessToken}` | 200 <br/> { "success": true, "data": "과목 후기가 삭제되었습니다." } <br/> 없는 후기 404 / 다른 사용자의 후기 403 | 구현완료 |
 | GET | /api/courses/{id}/reviews | 수업 후기 조회 (학점별 필터) | N/A | N/A | 미구현 |
 
+## 3-1. 학습자료 (material)
+강의 상세의 "학습자료" 탭 (와이어프레임 10번, #187). **모든 API가 로그인 필요**하다 (조회 포함).
+
+| Method | Path | 설명 | Request | Response | 상태 |
+|---|---|---|---|---|---|
+| POST | /api/courses/{courseId}/materials | 학습자료 업로드 | Header: <br/> `Authorization: Bearer {accessToken}` <br/> `multipart/form-data` <br/> `title`: 5~50자 <br/> `content`: 10~500자 <br/> `materialTypes`: 1개 이상, 같은 이름으로 여러 번 (`LECTURE_NOTE` 강의 필기 / `SUMMARY` 개념·요약 정리 / `PROBLEM_SOLVING` 문제·풀이 / `OTHER` 기타) <br/> `file`: 1개 (pdf·jpg·png·pptx·docx·xlsx·hwp, 최대 20MB) | 201 <br/> { "success": true, "data": { "materialId": 1 } } | 구현완료 |
+| GET | /api/courses/{courseId}/materials?page=0&size=20 | 학습자료 목록 (내 글 맨 위, 그다음 최신순) | Header: <br/> `Authorization: Bearer {accessToken}` <br/> Query: `page` 0부터, `size` 1~50 (기본 20) | 200 <br/> { "success": true, "data": { <br/> "totalCount": 3, "hasNext": false, <br/> "materials": [{ "materialId": 1, "title": "...", "nickname": "바다", <br/> "fileType": "pdf", "createdAt": "2026-11-18T10:00:00", "isMine": true }] <br/>} } | 구현완료 |
+| GET | /api/materials/{materialId} | 학습자료 상세 | Header: <br/> `Authorization: Bearer {accessToken}` | 200 <br/> { "success": true, "data": { <br/> "materialId": 1, "title": "...", "materialTypes": ["SUMMARY"], "nickname": "바다", <br/> "createdAt": "...", "updatedAt": "...", "content": "...", <br/> "fileName": "중간고사 정리.pdf", "fileType": "pdf", "fileSize": 1048576, "isMine": true <br/>} } | 구현완료 |
+| GET | /api/materials/{materialId}/download | 내려받기 주소 (5분 만료, 원래 파일명으로 저장) | Header: <br/> `Authorization: Bearer {accessToken}` | 200 <br/> { "success": true, "data": { "downloadUrl": "https://..." } } | 구현완료 |
+| DELETE | /api/materials/{materialId} | 학습자료 삭제 (작성자만, 첨부 파일도 삭제) | Header: <br/> `Authorization: Bearer {accessToken}` | 200 <br/> { "success": true, "data": null } | 구현완료 |
+
+- 업로드 실패: 입력값 400 `INVALID_INPUT_VALUE`(`errors`에 `title`·`content`·`materialTypes`), 파일 없음 400 `FILE_EMPTY`, 형식 400 `FILE_TYPE_NOT_ALLOWED`(`message`에 허용 형식), 20MB 초과 413 `FILE_TOO_LARGE`, 저장 실패 503 `FILE_UPLOAD_FAILED`, 없는 과목 404 `COURSE_NOT_FOUND`
+- 목록의 `fileType`은 "형식" 칸, `isMine`은 삭제 버튼 표시용. 무한 스크롤은 `hasNext`가 false가 될 때까지 `page`를 올린다. 없는 과목이면 404
+- `fileSize`는 바이트 단위다 (MB 표시는 화면에서 계산)
+- 내려받기 주소는 5분 뒤 만료된다. 버튼을 누를 때마다 새로 받는다. 주소를 만들지 못하면 503 `FILE_URL_FAILED`
+- 삭제: 다른 사람의 자료 403 `MATERIAL_NOT_OWNER`, 없는 자료 404 `MATERIAL_NOT_FOUND`
+- 수정 기능은 없다 (화면 없음)
+
 ## 4. 커뮤니티 (community)
 | Method | Path | 설명 | 상태 |
 |---|---|---|---|
@@ -197,6 +215,8 @@
 | 404 | `COURSE_NOT_FOUND` | 존재하지 않는 과목 |
 | 404 | `COURSE_OFFERING_NOT_FOUND` | 해당 교수가 개설한 과목이 아님 |
 | 409 | `DUPLICATE_COURSE_REVIEW` | 같은 과목+교수에 이미 강의평을 작성함 (동시 요청이 사전 확인을 통과하면 `DUPLICATE_RESOURCE`) |
+| 404 | `MATERIAL_NOT_FOUND` | 존재하지 않는 학습자료 |
+| 403 | `MATERIAL_NOT_OWNER` | 다른 사람이 올린 학습자료를 삭제하려 함 |
 | 404 | `COURSE_REVIEW_NOT_FOUND` | 존재하지 않거나 URL의 과목과 일치하지 않는 강의평 |
 
 [//]: # (| 404 | `PROFESSOR_COMMENT_NOT_FOUND` | 존재하지 않는 교수 후기 |)
