@@ -140,6 +140,25 @@ class AdminVerificationIntegrationTest {
     }
 
     @Test
+    void 거절_사유가_비어_있으면_400이고_대기_상태를_유지한다() throws Exception {
+        for (String body : new String[] {"{}", "{\"reason\":\"   \"}"}) {
+            mockMvc.perform(post("/api/admin/verifications/{id}/reject", applicantId)
+                    .header("Authorization", "Bearer " + adminToken)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"))
+                .andExpect(jsonPath("$.errors[0].field").value("reason"));
+        }
+
+        User applicant = userRepository.findById(applicantId).orElseThrow();
+        assertThat(applicant.getVerificationStatus()).isEqualTo(VerificationStatus.PENDING);
+        assertThat(applicant.getVerificationDocumentKey()).isEqualTo(DOCUMENT_KEY);
+        verify(fileStorage, never()).delete(anyString());
+        verify(emailSender, never()).send(anyString(), anyString(), anyString());
+    }
+
+    @Test
     void 이미_처리된_신청은_409이고_서류_삭제와_메일을_다시_하지_않는다() throws Exception {
         mockMvc.perform(post("/api/admin/verifications/{id}/approve", applicantId).header("Authorization", "Bearer " + adminToken))
             .andExpect(status().isOk());
@@ -147,7 +166,7 @@ class AdminVerificationIntegrationTest {
         mockMvc.perform(post("/api/admin/verifications/{id}/reject", applicantId)
                 .header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{}"))
+                .content("{\"reason\":\"학번이 보이지 않아요\"}"))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.code").value("VERIFICATION_ALREADY_PROCESSED"));
 

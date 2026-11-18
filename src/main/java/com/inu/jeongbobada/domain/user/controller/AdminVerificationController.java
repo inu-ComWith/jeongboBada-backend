@@ -55,7 +55,7 @@ public class AdminVerificationController {
         return ResponseEntity.status(response.httpStatus()).body(response);
     }
 
-    @Operation(summary = "가입 거절", description = "거절 사유는 선택. 서류를 삭제하고 반려 메일을 보낸다")
+    @Operation(summary = "가입 거절", description = "거절 사유는 필수(200자 이하, 비우면 400). 서류를 삭제하고 반려 메일을 보낸다")
     @PostMapping("/{userId}/reject")
     public ResponseEntity<ApiResponse<Void>> reject(
         @PathVariable Long userId,

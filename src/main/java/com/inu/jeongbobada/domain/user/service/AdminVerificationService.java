@@ -62,10 +62,10 @@ public class AdminVerificationService {
     }
 
     @Transactional
-    public void reject(Long userId, @Nullable String reason) {
+    public void reject(Long userId, String reason) {
         User user = findPendingUser(userId);
         String documentKey = user.getVerificationDocumentKey();
-        String trimmedReason = reason == null || reason.isBlank() ? null : reason.strip();
+        String trimmedReason = reason.strip();
         user.rejectVerification(LocalDateTime.now(), trimmedReason);
         afterCommit(documentKey, user.getEmail(), REJECTED_SUBJECT, rejectedBody(user.getNickname(), trimmedReason));
     }
@@ -142,13 +142,13 @@ public class AdminVerificationService {
             """.formatted(nickname);
     }
 
-    private static String rejectedBody(String nickname, @Nullable String reason) {
-        String reasonLine = reason == null ? "" : "반려 사유: " + reason + "\n";
+    private static String rejectedBody(String nickname, String reason) {
         return """
             %s님, 정보바다 가입 신청이 반려되었어요.
-            %s
+            반려 사유: %s
+
             제출하신 신분 확인 서류는 삭제했어요.
             문의가 있으면 운영진에게 연락해주세요.
-            """.formatted(nickname, reasonLine);
+            """.formatted(nickname, reason);
     }
 }
