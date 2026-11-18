@@ -1,8 +1,8 @@
 ---
 name: ✨ 기능 / 개선 요청
 about: 새 기능이나 개선 작업을 제안합니다
-title: "feat: "
-labels: enhancement
+title: "✨ feat: "
+labels: "✨ enhancement"
 assignees: ''
 ---
 
