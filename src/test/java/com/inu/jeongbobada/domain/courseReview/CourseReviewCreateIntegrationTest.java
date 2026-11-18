@@ -25,6 +25,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -93,6 +94,9 @@ class CourseReviewCreateIntegrationTest {
     private MockMvc mockMvc;
 
     @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Autowired
     private UserRepository userRepository;
 
     @Autowired
@@ -121,6 +125,7 @@ class CourseReviewCreateIntegrationTest {
         studentId = String.format("9%08d", n);
         mockMvc.perform(SignupRequests.signup(studentId, "password1", "rv" + (n % 10_000), "rv" + n + "@example.com"))
             .andExpect(status().isCreated());
+        SignupRequests.approve(jdbcTemplate, studentId);
 
         course = courseRepository.save(new Course("테스트과목", "T" + n, "테스트 과목 설명"));
         professor = professorRepository.save(new Professor(null, "테스트교수", "테스트 교수 설명", null, "200", "032-000-0000", "email@inu.ac.kr"));
@@ -370,6 +375,7 @@ class CourseReviewCreateIntegrationTest {
 
         mockMvc.perform(SignupRequests.signup(additionalStudentId, "password1", "o" + (n % 100_000), "other" + n + "@example.com"))
             .andExpect(status().isCreated());
+        SignupRequests.approve(jdbcTemplate, additionalStudentId);
 
         return additionalStudentId;
     }

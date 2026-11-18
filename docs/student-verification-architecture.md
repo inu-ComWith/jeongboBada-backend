@@ -94,11 +94,17 @@ API는 `/api/admin/verifications` (`AdminVerificationController`, `AdminVerifica
   - 이 컬럼 전에 가입한 계정은 null이라 읽을 때 가입일로 대신한다 (`User.getVerificationRequestedAt`)
 - [x] 통합 테스트 `VerificationResubmitIntegrationTest` (성공 / 비밀번호 틀림 401 + 로그인과 같은 실패 횟수 / 반려 아님 409)
 
-### 4. 승인 전 로그인 차단 켜기
+### 4. 승인 전 로그인 차단 켜기 (완료)
 **1~3단계가 배포되고 관리자가 실제로 승인할 수 있는 걸 확인한 뒤에 켠다.** 먼저 켜면 새 가입자가 로그인도 못 하고 승인받을 방법도 없는 기간이 생긴다 (#142).
-- [ ] 승인 대기 → 신청일, 반려 → 반려 사유를 담아 거절 (`UserErrorCode` + `api-spec.md` 에러 코드 표)
-- [ ] 기존 통합 테스트 정리: 대부분 "가입 → 로그인" 순서라 테스트에서 승인 처리가 필요하다
-- [ ] 통합 테스트 (승인 전 로그인 거부)
+- [x] 승인 대기 → 403 `VERIFICATION_PENDING` + `data.requestedAt`, 반려 → 403 `VERIFICATION_REJECTED` + `data.rejectionReason`
+  - 비밀번호 확인 뒤에 본다 (`AuthService.login` → `requireApproved`). 403인 이유: 401이면 프론트의 토큰 재발급 처리가 돈다
+  - 에러 응답에도 `data`를 담을 수 있게 `ApiResponse.error(code, data)` 추가. 다른 에러는 그대로 `data` 없음
+- [x] 토큰 재발급(`reissue`)도 같은 확인. 로그인만 막으면 차단 전에 받은 refresh token으로 14일 동안 계속 쓸 수 있다
+  - 이미 받은 access token은 만료(최대 1시간)까지는 쓸 수 있다
+- [x] 비밀번호 찾기·서류 재제출은 막지 않는다 (둘 다 로그인과 무관한 API)
+- [x] 기존 통합 테스트 정리: "가입 → 로그인" 테스트는 `SignupRequests.approve(...)`로 승인 상태를 만든 뒤 로그인
+- [x] 통합 테스트 `LoginVerificationStatusIntegrationTest` (대기 403·신청일 / 반려 403·사유 / 비밀번호 틀림 401 / 승인 200 / 재발급 403 / 비밀번호 찾기 허용)
+- [ ] **배포 전**: 배포 서버의 테스트 계정 중 계속 쓸 계정은 관리자 API(또는 SQL)로 승인해 둔다. 배포 순간 승인 대기 계정은 로그인하지 못한다
 
 ## 브랜치
 - feat/s3-upload (공용 업로드 컴포넌트, #169 머지됨)

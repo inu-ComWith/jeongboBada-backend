@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -42,6 +43,9 @@ class PasswordByteLimitIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Autowired
     private UserRepository userRepository;
@@ -127,6 +131,7 @@ class PasswordByteLimitIntegrationTest {
     }
 
     private ResultActions requestLogin(String password) throws Exception {
+        SignupRequests.approve(jdbcTemplate, studentId);
         return mockMvc.perform(post("/api/auth/login")
             .contentType(MediaType.APPLICATION_JSON)
             .content("""

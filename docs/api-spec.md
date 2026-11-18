@@ -29,7 +29,18 @@
 - 회원가입에 `email`이 **필수**로 추가됨 (비밀번호 찾기용). 이미 가입된 이메일이면 409. 대소문자/앞뒤 공백은 무시하고 비교
 - 회원가입은 **`multipart/form-data`**로 보낸다 (#142). 입력값은 폼 필드, 재학 증빙 서류는 `file` 파트. JSON으로 보내면 415 `UNSUPPORTED_MEDIA_TYPE`
   - 서류 오류: 없음 400 `FILE_EMPTY`, pdf·jpg가 아님 400 `FILE_TYPE_NOT_ALLOWED`, 10MB 초과 413 `FILE_TOO_LARGE`, 저장 실패 503 `FILE_UPLOAD_FAILED`. 학번·닉네임·이메일 중복(409)이면 서류는 저장하지 않는다
-  - 가입하면 **승인 대기** 상태가 된다. 지금은 승인 전에도 로그인할 수 있고, 관리자 승인 API가 생긴 뒤 승인 전 로그인을 막는다 (`docs/student-verification-architecture.md` 4단계)
+  - 가입하면 **승인 대기** 상태가 된다. **관리자가 승인하기 전에는 로그인할 수 없다** (아래 "승인 전 로그인")
+- 승인 전 로그인 (#142 4단계): 학번·비밀번호가 맞아도 승인 대기·반려면 토큰 대신 **403**을 준다. 화면은 `code`로 팝업을 고르고 `data`를 보여준다
+  ```json
+  { "success": false, "code": "VERIFICATION_PENDING", "message": "가입 승인을 기다리고 있어요",
+    "data": { "requestedAt": "2026-11-18T10:00:00" } }
+  { "success": false, "code": "VERIFICATION_REJECTED", "message": "가입 신청이 반려되었어요. 서류를 다시 제출해주세요",
+    "data": { "rejectionReason": "학번이 보이지 않아요" } }
+  ```
+  - 상태는 비밀번호 확인 **뒤에** 본다. 비밀번호가 틀리면 상태와 상관없이 401 `INVALID_CREDENTIALS`
+  - 토큰 재발급(`/api/auth/reissue`)도 같은 이유로 403 (차단 전에 받은 refresh token으로 계속 쓰는 것 방지)
+  - 403이라 프론트의 "401 → 토큰 재발급" 처리와 겹치지 않는다
+  - 반려면 "서류 다시 제출"(`/api/auth/verification/resubmit`), 비밀번호를 잊었으면 비밀번호 찾기로 이어진다. 둘 다 로그인 없이 쓸 수 있다
 - 새 비밀번호(가입·변경·재설정)는 64자 이하이면서 **72바이트 이하**여야 한다. 영문·숫자는 1바이트, 한글은 3바이트로 계산하며, 넘으면 400 `INVALID_INPUT_VALUE`
 - 반려 후 다시 제출(`POST /api/auth/verification/resubmit`): 반려된 사용자는 로그인 토큰이 없어서 **학번 + 비밀번호 + 새 서류**를 함께 보낸다. 성공하면 다시 승인 대기가 되고 신청일이 지금으로 바뀐다
   - 학번·비밀번호 확인은 로그인과 같다: 없는 학번 404 `STUDENT_ID_NOT_REGISTERED`, 틀리면 401 `INVALID_CREDENTIALS`(n/5회), 5회 실패면 429 `LOGIN_LOCKED`. **실패 횟수는 로그인과 함께 센다**
@@ -177,6 +188,8 @@
 | 429 | `VERIFICATION_CODE_RESEND_TOO_FAST` | 인증코드 재발송 60초 제한 |
 | 429 | `PASSWORD_RESET_RESEND_LIMIT_EXCEEDED` | 비밀번호 찾기 재발송 하루 5회 초과 |
 | 429 | `LOGIN_LOCKED` | 로그인 5회 실패로 5분 잠금. 남은 시간(초)은 `Retry-After` 헤더 |
+| 403 | `VERIFICATION_PENDING` | 승인 대기 계정의 로그인·토큰 재발급. `data.requestedAt`에 신청일 |
+| 403 | `VERIFICATION_REJECTED` | 반려 계정의 로그인·토큰 재발급. `data.rejectionReason`에 반려 사유(관리자가 비웠으면 없음) |
 | 409 | `VERIFICATION_NOT_REJECTED` | 반려 상태가 아닌데 서류를 다시 제출함 (이미 검토 중이거나 승인됨) |
 | 409 | `VERIFICATION_ALREADY_PROCESSED` | 관리자가 승인 대기가 아닌(이미 승인·거절된) 가입 신청을 처리하려 함 |
 | 503 | `EMAIL_SEND_FAILED` | 메일 발송 실패 |

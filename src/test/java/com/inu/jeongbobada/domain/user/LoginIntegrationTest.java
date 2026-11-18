@@ -59,6 +59,7 @@ class LoginIntegrationTest {
         studentId = String.format("9%08d", n);
         mockMvc.perform(SignupRequests.signup(studentId, PASSWORD, "li" + (n % 10_000), "li" + n + "@example.com"))
             .andExpect(status().isCreated());
+        SignupRequests.approve(jdbcTemplate, studentId);
     }
 
     @AfterEach

@@ -1,6 +1,8 @@
 package com.inu.jeongbobada.global.exception;
 
+import com.inu.jeongbobada.domain.user.dto.VerificationBlockedResponse;
 import com.inu.jeongbobada.domain.user.exception.LoginLockedException;
+import com.inu.jeongbobada.domain.user.exception.VerificationRequiredException;
 import com.inu.jeongbobada.global.common.ApiResponse;
 import com.inu.jeongbobada.global.common.ApiResponse.FieldError;
 import com.inu.jeongbobada.global.exception.code.BaseErrorCode;
@@ -66,6 +68,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ResponseEntity.status(response.httpStatus())
             .header(HttpHeaders.RETRY_AFTER, String.valueOf(e.getRetryAfterSeconds()))
             .body(response);
+    }
+
+    // 승인 대기·반려 로그인 거절. 화면이 팝업에 보여줄 신청일·반려 사유를 data에 담는다 (#142)
+    @ExceptionHandler(VerificationRequiredException.class)
+    public ResponseEntity<ApiResponse<VerificationBlockedResponse>> handleVerificationRequiredException(VerificationRequiredException e) {
+        ApiResponse<VerificationBlockedResponse> response = ApiResponse.error(e.getErrorCode(), e.getDetail());
+        return ResponseEntity.status(response.httpStatus()).body(response);
     }
 
     // 서비스의 사전 중복 확인(findBy...)을 통과했지만 저장 순간 다른 요청이 먼저 넣어서 UNIQUE 제약에 걸린 경우 (동시 요청).
