@@ -2,6 +2,7 @@ package com.inu.jeongbobada.domain.user.dto;
 
 import com.inu.jeongbobada.domain.user.entity.User;
 import com.inu.jeongbobada.domain.user.entity.VerificationStatus;
+import com.inu.jeongbobada.global.file.FileType;
 import org.jspecify.annotations.Nullable;
 
 import java.time.LocalDateTime;
@@ -35,6 +36,6 @@ public record VerificationSummaryResponse(
 
     // key는 {prefix}/{UUID}.{확장자}라 확장자가 곧 형식이다 (FileStorage)
     private static @Nullable String documentTypeOf(@Nullable String key) {
-        return key == null ? null : key.substring(key.lastIndexOf('.') + 1);
+        return key == null ? null : FileType.extensionOfKey(key);
     }
 }

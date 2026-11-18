@@ -157,6 +157,57 @@ class FileStorageTest {
             .contains("X-Amz-Expires=600");
     }
 
+    // 학습자료 형식 (#187). 오피스·한글은 브라우저가 application/octet-stream으로 보내는 경우가 많아 함께 받는다
+    private static final Set<FileType> MATERIAL_TYPES =
+        Set.of(FileType.PDF, FileType.JPG, FileType.PNG, FileType.PPTX, FileType.DOCX, FileType.XLSX, FileType.HWP);
+    private static final byte[] PNG = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A};
+    private static final byte[] ZIP = {'P', 'K', 0x03, 0x04, 0x14, 0x00};
+    private static final byte[] HWP = {(byte) 0xD0, (byte) 0xCF, 0x11, (byte) 0xE0, (byte) 0xA1, (byte) 0xB1, 0x1A, (byte) 0xE1, 0};
+
+    @Test
+    void 학습자료_형식은_png_오피스_한글을_받는다() {
+        assertThat(fileStorage.upload("material", file("필기.png", "image/png", PNG), MATERIAL_TYPES, TEN_MB)).endsWith(".png");
+        assertThat(fileStorage.upload("material", file("발표.pptx",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation", ZIP), MATERIAL_TYPES, TEN_MB)).endsWith(".pptx");
+        assertThat(fileStorage.upload("material", file("정리.docx", "application/octet-stream", ZIP), MATERIAL_TYPES, TEN_MB)).endsWith(".docx");
+        assertThat(fileStorage.upload("material", file("표.xlsx", "application/octet-stream", ZIP), MATERIAL_TYPES, TEN_MB)).endsWith(".xlsx");
+        assertThat(fileStorage.upload("material", file("과제.hwp", "application/x-hwp", HWP), MATERIAL_TYPES, TEN_MB)).endsWith(".hwp");
+        assertThat(fileStorage.upload("material", file("과제2.hwp", "application/octet-stream", HWP), MATERIAL_TYPES, TEN_MB)).endsWith(".hwp");
+    }
+
+    @Test
+    void 저장할_때는_형식의_대표_Content_Type을_붙인다() {
+        fileStorage.upload("material", file("정리.docx", "application/octet-stream", ZIP), MATERIAL_TYPES, TEN_MB);
+
+        ArgumentCaptor<PutObjectRequest> request = ArgumentCaptor.forClass(PutObjectRequest.class);
+        verify(s3Client).putObject(request.capture(), any(RequestBody.class));
+        assertThat(request.getValue().contentType())
+            .isEqualTo("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    }
+
+    @Test
+    void 내용이_다른_오피스_한글_파일은_거절한다() {
+        // 확장자만 hwp인 pdf, 확장자만 docx인 한글 문서
+        assertError(() -> fileStorage.upload("material", file("가짜.hwp", "application/octet-stream", PDF), MATERIAL_TYPES, TEN_MB),
+            FileErrorCode.FILE_TYPE_NOT_ALLOWED);
+        assertError(() -> fileStorage.upload("material", file("가짜.docx", "application/octet-stream", HWP), MATERIAL_TYPES, TEN_MB),
+            FileErrorCode.FILE_TYPE_NOT_ALLOWED);
+    }
+
+    @Test
+    void pdf_이미지는_octet_stream을_받지_않는다() {
+        assertError(() -> fileStorage.upload("material", file("a.pdf", "application/octet-stream", PDF), MATERIAL_TYPES, TEN_MB),
+            FileErrorCode.FILE_TYPE_NOT_ALLOWED);
+    }
+
+    @Test
+    void 내려받기_주소에는_원래_파일명을_한글도_깨지지_않게_넣는다() {
+        String url = fileStorage.presignedDownloadUrl("material/abc.pdf", Duration.ofMinutes(5), "자료 정리.pdf");
+
+        assertThat(url).contains("response-content-disposition=")
+            .contains("filename%2A%3DUTF-8%27%27%25EC%259E%2590%25EB%25A3%258C%2520%25EC%25A0%2595%25EB%25A6%25AC.pdf");
+    }
+
     private static MockMultipartFile file(String name, String contentType, byte[] content) {
         return new MockMultipartFile("file", name, contentType, content);
     }

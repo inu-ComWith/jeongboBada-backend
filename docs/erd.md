@@ -11,7 +11,7 @@
 - 테이블/컬럼 이름은 코드에 대문자(`USERS`, `COURSE_ID`)로 적혀 있지만, Spring Boot 기본 네이밍 전략 때문에
   **DB에는 소문자**(`users`, `course_id`)로 생성된다. `USERS`는 `USER`가 SQL 예약어일 수 있어서 붙인 이름
 - 열거형(`enum`)은 `@Enumerated(EnumType.STRING)` — PostgreSQL에는 `varchar` + 값 목록 check 제약으로 생성됨 (값 목록은 아래 "열거형" 참고). 아래 표의 `ENUM`은 이 뜻
-- `BaseEntity`를 상속한 테이블(`USERS`, `COURSE_REVIEW`, `MATERIAL`)은 `CREATED_AT`/`UPDATED_AT`이 자동으로 채워짐
+- `BaseEntity`를 상속한 테이블(`USERS`, `COURSE_REVIEW`, `COURSE_MATERIAL`)은 `CREATED_AT`/`UPDATED_AT`이 자동으로 채워짐
 - **모든 FK에 삭제 정책(`ON DELETE`)을 따로 지정하지 않았다** → DB 기본값(`NO ACTION`)이라, 자식 행이 있으면 부모 행 삭제가 실패한다.
   그래서 `COURSE`/`COURSE_OFFERING`은 삭제 대신 `ACTIVE=false`로 내리는 방식을 쓴다
 
@@ -26,7 +26,8 @@
 | `COURSE` | 전공 과목 자체 정보 (학기가 바뀌어도 불변) | course | 구현 |
 | `COURSE_OFFERING` | 학년도/학기별 개설 정보 (담당 교수·시간표·학점 등) | course | 구현 |
 | `COURSE_REVIEW` | 수업 후기 (학점별 필터 대상) | courseReview | 구현 |
-| `MATERIAL` | 수업 자료 | material | 구현 |
+| `COURSE_MATERIAL` | 학습자료 (#187. 예전 `MATERIAL` 테이블 대신) | material | 구현 |
+| `COURSE_MATERIAL_TYPE` | 학습자료 유형 (자료당 여러 개) | material | 구현 |
 | `POST` | 게시글 | community | 미구현 (엔티티 없음) |
 | `COMMENT` | 댓글 | community | 미구현 (엔티티 없음) |
 | `CAREER_STORY` | 진로 수기 | career | 미구현 (엔티티 없음) |
@@ -44,14 +45,15 @@
 erDiagram
     USERS ||--o{ COURSE_REVIEW : "작성"
     USERS ||--o{ PROFESSOR_COMMENT : "작성"
-    USERS ||--o{ MATERIAL : "업로드"
+    USERS ||--o{ COURSE_MATERIAL : "업로드"
     PROFESSOR ||--o| LAB : "운영"
     PROFESSOR ||--o{ PROFESSOR_COMMENT : "받음"
     PROFESSOR ||--o{ COURSE_OFFERING : "담당"
     PROFESSOR ||--o{ COURSE_REVIEW : "대상"
     COURSE ||--o{ COURSE_OFFERING : "개설"
     COURSE ||--o{ COURSE_REVIEW : "대상"
-    COURSE ||--o{ MATERIAL : "소속"
+    COURSE ||--o{ COURSE_MATERIAL : "소속"
+    COURSE_MATERIAL ||--|{ COURSE_MATERIAL_TYPE : "유형"
 
     USERS {
         bigint USER_ID PK
@@ -118,14 +120,19 @@ erDiagram
         varchar CONTENT
         bigint LIKE_COUNT
     }
-    MATERIAL {
+    COURSE_MATERIAL {
         bigint MATERIAL_ID PK
         bigint USER_ID FK
         bigint COURSE_ID FK
         varchar TITLE
         varchar CONTENT
-        enum MATERIAL_TYPE
-        varchar FILE_URL
+        varchar FILE_KEY "S3 key"
+        varchar ORIGINAL_FILE_NAME
+        bigint FILE_SIZE
+    }
+    COURSE_MATERIAL_TYPE {
+        bigint MATERIAL_ID FK
+        varchar MATERIAL_TYPE
     }
 ```
 
@@ -139,8 +146,9 @@ erDiagram
 | `COURSE_REVIEW` | `USER_ID` | `USERS` | 1 : N | 명시 없음 (NO ACTION) |
 | `COURSE_REVIEW` | `COURSE_ID` | `COURSE` | 1 : N | 명시 없음 (NO ACTION) |
 | `COURSE_REVIEW` | `PROFESSOR_ID` | `PROFESSOR` | 1 : N | 명시 없음 (NO ACTION) |
-| `MATERIAL` | `USER_ID` | `USERS` | 1 : N | 명시 없음 (NO ACTION) |
-| `MATERIAL` | `COURSE_ID` | `COURSE` | 1 : N | 명시 없음 (NO ACTION) |
+| `COURSE_MATERIAL` | `USER_ID` | `USERS` | 1 : N | 명시 없음 (NO ACTION) |
+| `COURSE_MATERIAL` | `COURSE_ID` | `COURSE` | 1 : N | 명시 없음 (NO ACTION) |
+| `COURSE_MATERIAL_TYPE` | `MATERIAL_ID` | `COURSE_MATERIAL` | 1 : N | 자료를 지우면 JPA가 함께 지움 (`@ElementCollection`) |
 
 [//]: # (| `PROFESSOR_COMMENT` | `PROFESSOR_ID` | `PROFESSOR` | 1 : N | 명시 없음 &#40;NO ACTION&#41; |)
 
@@ -161,7 +169,6 @@ erDiagram
 | `COURSE` | (자동) | `COURSE_CODE` | 학수번호 |
 | `COURSE_OFFERING` | `UK_COURSE_OFFERING` | `COURSE_ID`, `PROFESSOR_ID`, `ACADEMIC_YEAR`, `SEMESTER` | 같은 조합이면 새로 넣지 않고 갱신 (분반은 학기마다 재배정돼 키로 못 씀) |
 | `COURSE_REVIEW` | `UK_USER_COURSE_PROFESSOR_REVIEW` | `USER_ID`, `COURSE_ID`, `PROFESSOR_ID` | 사용자당 (과목, 교수) 조합별 후기 1개 |
-| `MATERIAL` | `UK_USER_COURSE_MATERIAL` | `USER_ID`, `COURSE_ID` | 사용자당 과목별 자료 1개 |
 | `LAB` | (자동) | `PROFESSOR_ID` | 교수당 연구실 1개 (1:1) |
 
 ## 테이블 상세
@@ -304,21 +311,29 @@ erDiagram
 | `CREATED_AT` | DATETIME(6) | NN | 자동 |
 | `UPDATED_AT` | DATETIME(6) | NN | 자동 |
 
-### MATERIAL (material)
+### COURSE_MATERIAL (material)
+
+강의별 학습자료 (#187). 예전 `MATERIAL` 테이블에는 "사용자·과목당 1개" UNIQUE와 단일 유형 NOT NULL 컬럼이 남아 있고 `ddl-auto: update`로는 지워지지 않아서, 새 테이블로 시작했다. 예전 `MATERIAL` 테이블은 비어 있어 그대로 두며 필요하면 직접 지운다(`DROP TABLE material;`).
 
 | 컬럼 | 타입 | 제약 | 설명 |
 |---|---|---|---|
 | `MATERIAL_ID` | BIGINT | PK, AI | |
 | `COURSE_ID` | BIGINT | FK, NN | |
 | `USER_ID` | BIGINT | FK, NN | 업로더 |
-| `TITLE` | VARCHAR(50) | NN | 10~50자 (`@Size`) |
-| `CONTENT` | VARCHAR(500) | NN | 20~500자 (`@Size`) |
-| `MATERIAL_TYPE` | ENUM | NN | |
-| `FILE_URL` | VARCHAR(500) | | 파일 업로드는 선택이라 null 허용 |
-| `ORIGINAL_FILE_NAME` | VARCHAR(100) | | 〃 |
-| `FILE_SIZE` | BIGINT | | 〃 |
+| `TITLE` | VARCHAR(50) | NN | 5~50자 (요청 DTO에서 검증) |
+| `CONTENT` | VARCHAR(500) | NN | 10~500자 (요청 DTO에서 검증) |
+| `FILE_KEY` | VARCHAR(100) | NN | 첨부 파일의 S3 key (`material/{UUID}.{확장자}`). URL이 아니라 key를 저장하고 내려받을 때 주소를 만든다 |
+| `ORIGINAL_FILE_NAME` | VARCHAR(255) | NN | 사용자가 올린 원래 파일명 (내려받을 때 이 이름으로 저장) |
+| `FILE_SIZE` | BIGINT | NN | 바이트 |
 | `CREATED_AT` | DATETIME(6) | NN | 자동 |
 | `UPDATED_AT` | DATETIME(6) | NN | 자동 |
+
+### COURSE_MATERIAL_TYPE (material)
+
+| 컬럼 | 타입 | 제약 | 설명 |
+|---|---|---|---|
+| `MATERIAL_ID` | BIGINT | FK, NN | |
+| `MATERIAL_TYPE` | VARCHAR(20) | NN | `MaterialType` (자료당 1개 이상) |
 
 ## 열거형
 
@@ -340,7 +355,7 @@ erDiagram
 | `Attendance` | `COURSE_REVIEW.ATTENDANCE` | `STRICT`, `RANDOM`, `NONE` |
 | `Count` | `COURSE_REVIEW.EXAM_COUNT`, `QUIZ_COUNT` | `ZERO` ~ `TEN` (`ZERO`, `ONE`, `TWO`, `THREE`, `FOUR`, `FIVE`, `SIX`, `SEVEN`, `EIGHT`, `NINE`, `TEN`) |
 | `GradingType` | `COURSE_REVIEW.GRADING_TYPE` | `VERY_GENEROUS`, `GENEROUS`, `NORMAL`, `STRICT`, `VERY_STRICT` |
-| `MaterialType` | `MATERIAL.MATERIAL_TYPE` | `LECTURE_NOTE`, `ASSIGNMENT`, `SUMMARY`, `PAST_EXAM`, `REFERENCE`, `OTHER`, `TEXTBOOK_PDF` |
+| `MaterialType` | `COURSE_MATERIAL_TYPE.MATERIAL_TYPE` | `LECTURE_NOTE`(강의 필기), `SUMMARY`(개념·요약 정리), `PROBLEM_SOLVING`(문제·풀이), `OTHER`(기타) |
 
 (`ReviewSort`는 정렬 옵션용 enum이라 DB 컬럼이 아니다.)
 

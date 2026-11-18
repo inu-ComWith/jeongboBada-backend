@@ -22,12 +22,13 @@ spring:
           auth: true
           starttls:
             enable: true
-  # 파일 업로드 크기 한도. Spring 기본값이 1MB라 가입 서류(최대 10MB)를 받으려면 반드시 올려야 한다.
+  # 파일 업로드 크기 한도(서버 전체). Spring 기본값이 1MB라 반드시 올려야 한다. 가장 큰 학습자료(20MB, #187)에 맞추고,
+  # API별 한도(가입 서류 10MB 등)는 FileStorage가 따로 검사한다.
   # request는 파일 + 나머지 폼 필드라 조금 더 크게 둔다
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 11MB
+      max-file-size: 20MB
+      max-request-size: 21MB
   jpa:
     hibernate:
       # update: 엔티티 변경사항을 기동 시 테이블에 자동 반영 (개발 편의용, 운영에서는 지양)

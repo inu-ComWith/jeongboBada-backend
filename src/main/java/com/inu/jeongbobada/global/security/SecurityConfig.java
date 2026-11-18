@@ -66,6 +66,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/courses/*/reviews").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/api/courses/*/reviews/*").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/courses/*/reviews/*").authenticated()
+                        // 학습자료는 조회까지 로그인 필요 (와이어프레임 "로그인 필수: 강의 상세, 후기, 학습자료", #187)
+                        .requestMatchers("/api/courses/*/materials", "/api/materials/**").authenticated()
                         // TODO: 그 외 인증이 필요한 경로(마이페이지 즐겨찾기 등)가 생기면
                         // 그 경로를 여기 authenticated()로 먼저 추가한 뒤 아래 anyRequest()보다 앞에 둘 것.
                         .anyRequest().permitAll()

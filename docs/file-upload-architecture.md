@@ -14,7 +14,7 @@
 | 신분 확인 서류 | pdf·jpg, 최대 10MB, 1개. 승인·반려 후 바로 삭제. 열람 URL 만료 5분 | [wireframe-spec.md](wireframe-spec.md) 1번, [student-verification-architecture.md](student-verification-architecture.md) |
 | 수명주기 규칙 | AWS S3에서는 `verification/`을 업로드 30일 뒤 자동 삭제한다. **Supabase는 수명주기 규칙을 지원하지 않아** 그 기간에는 자동 삭제 없이 승인·반려 때만 지우고, 삭제 실패는 로그를 보고 수동 정리한다. AWS로 옮길 때 30일 규칙을 다시 만든다 | 2026-11-15, #175 |
 | 성적 인증 | 범위에서 제외 | 2026-11-15 |
-| 강의 자료 첨부 | 강의평이 아니라 `Material`(학습자료 탭)에 붙인다 | [wireframe-spec.md](wireframe-spec.md) 10번 |
+| 학습자료 첨부 | 강의평이 아니라 `Material`(학습자료 탭)에 붙인다. pdf·jpg·png·pptx·docx·xlsx·hwp, 최대 20MB, 1개. 내려받기 주소 5분 | [wireframe-spec.md](wireframe-spec.md) 10번, #187 (2026-11-18) |
 
 ## 진행 환경
 
@@ -49,8 +49,8 @@ Learner Lab에서 지킬 것:
 | `aws.region` | `us-east-1` | 필수 (`@Validated`) |
 | `aws.s3.bucket` | `jeongbobada-dev` | 필수 (`@Validated`) |
 | `aws.s3.endpoint` | `https://<project_ref>.storage.supabase.co/storage/v1/s3` | 선택. 있으면 그 주소 + path-style로 붙고, 비우면 AWS S3 (#175) |
-| `spring.servlet.multipart.max-file-size` | `10MB` | Spring 기본값이 1MB라 반드시 올려야 한다 |
-| `spring.servlet.multipart.max-request-size` | `11MB` | 파일 + 나머지 폼 필드 |
+| `spring.servlet.multipart.max-file-size` | `20MB` | 서버 전체 한도. 가장 큰 학습자료(20MB)에 맞춘다. Spring 기본값이 1MB라 반드시 올려야 한다. API별 한도(가입 서류 10MB)는 `FileStorage`가 검사 |
+| `spring.servlet.multipart.max-request-size` | `21MB` | 파일 + 나머지 폼 필드 |
 
 AGENTS.md 설정값 체크리스트 4곳 + `application-test.properties`(가짜 값)에 함께 반영한다.
 
@@ -131,8 +131,14 @@ Supabase 문서 기준(2026-11-15): Put/Get/Delete/HeadObject와 presigned URL(S
   - AWS SDK 기본 체크섬 헤더도 문제없었다. 별도 설정 없이 endpoint + path-style만으로 동작
 - [ ] Render 환경변수 `AWS_REGION`, `AWS_S3_BUCKET`, `AWS_S3_ENDPOINT`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` 등록 → 배포 서버에서 서류 첨부 가입 확인
 
+### 5. 학습자료 첨부 (#187)
+- [x] `FileType`에 png, pptx·docx·xlsx(zip), hwp(OLE) 추가. 오피스·한글은 브라우저가 `application/octet-stream`으로 보내는 경우가 많아 함께 받고, 앞부분 바이트로 형식을 확인한다
+  - pptx·docx·xlsx는 zip이라 앞부분 바이트가 같다. 확장자로 형식을 고르고 zip인지만 확인한다 (zip 파일 이름만 바꾼 것은 걸러지지 않는다)
+- [x] `FileStorage.presignedDownloadUrl`: 내려받을 때 원래 파일명으로 저장되게 `response-content-disposition`(한글은 RFC 5987 `filename*=UTF-8''`)을 붙인다
+- [x] 서버 전체 업로드 한도 10MB → 20MB (설정값 체크리스트 반영). **Render 환경변수도 바꿔야 한다**: `SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE=20MB`, `..._MAX_REQUEST_SIZE=21MB`
+
 ## 결정이 필요한 것
-- [ ] 학습자료 허용 파일 형식·최대 크기 (와이어프레임 미정)
+- [x] 학습자료 허용 파일 형식·최대 크기 → pdf·jpg·png·pptx·docx·xlsx·hwp, 20MB (2026-11-18, #187)
 - [ ] 실제 서비스용 AWS 계정 (명의·결제 수단)
 - [x] presigned GET URL 만료 시간 (관리자 서류 열람 기준) → 5분 (2026-11-15)
 - [x] 반려 후 재제출 시 본인 확인 방식 → 학번 + 비밀번호 + 새 서류 (2026-11-15, [student-verification-architecture.md](student-verification-architecture.md))
