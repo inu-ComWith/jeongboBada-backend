@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -42,6 +43,9 @@ class LogoutIntegrationTest {
     private MockMvc mockMvc;
 
     @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Autowired
     private UserRepository userRepository;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -54,6 +58,7 @@ class LogoutIntegrationTest {
         studentId = String.format("9%08d", n);
         mockMvc.perform(SignupRequests.signup(studentId, "password1", "lg" + (n % 10_000), "lg" + n + "@example.com"))
             .andExpect(status().isCreated());
+        SignupRequests.approve(jdbcTemplate, studentId);
     }
 
     @AfterEach

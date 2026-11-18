@@ -29,6 +29,9 @@ public enum UserErrorCode implements BaseErrorCode {
     PASSWORD_RESET_SAME_PASSWORD(HttpStatus.BAD_REQUEST, "PASSWORD_RESET_SAME_PASSWORD", "이전과 같은 비밀번호는 쓸 수 없어요"), // 400
     // 승인 대기가 아닌 계정을 승인·반려하려 할 때 (다른 관리자가 먼저 처리했거나 기존 계정)
     VERIFICATION_ALREADY_PROCESSED(HttpStatus.CONFLICT, "VERIFICATION_ALREADY_PROCESSED", "이미 처리된 가입 신청이에요"), // 409
+    // 승인 전 로그인·토큰 재발급 거절 (#142 4단계). 401이면 프론트의 토큰 재발급 처리가 돌아서 403으로 둔다
+    VERIFICATION_PENDING(HttpStatus.FORBIDDEN, "VERIFICATION_PENDING", "가입 승인을 기다리고 있어요"), // 403
+    VERIFICATION_REJECTED(HttpStatus.FORBIDDEN, "VERIFICATION_REJECTED", "가입 신청이 반려되었어요. 서류를 다시 제출해주세요"), // 403
     // 반려 상태가 아닌데 서류를 다시 제출할 때 (이미 검토 중이거나 승인됨)
     VERIFICATION_NOT_REJECTED(HttpStatus.CONFLICT, "VERIFICATION_NOT_REJECTED", "반려된 가입 신청만 서류를 다시 제출할 수 있어요"), // 409
     EMAIL_SEND_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "EMAIL_SEND_FAILED", "이메일 발송에 실패했습니다. 잠시 후 다시 시도해주세요"), // 503

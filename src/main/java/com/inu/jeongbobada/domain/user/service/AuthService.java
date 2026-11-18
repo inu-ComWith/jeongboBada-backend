@@ -5,11 +5,13 @@ import com.inu.jeongbobada.domain.user.dto.NicknameCheckResponse;
 import com.inu.jeongbobada.domain.user.dto.ReissueRequest;
 import com.inu.jeongbobada.domain.user.dto.SignupRequest;
 import com.inu.jeongbobada.domain.user.dto.TokenResponse;
+import com.inu.jeongbobada.domain.user.dto.VerificationBlockedResponse;
 import com.inu.jeongbobada.domain.user.dto.VerificationResubmitRequest;
 import com.inu.jeongbobada.domain.user.entity.User;
 import com.inu.jeongbobada.domain.user.entity.VerificationStatus;
 import com.inu.jeongbobada.domain.user.exception.LoginLockedException;
 import com.inu.jeongbobada.domain.user.exception.UserErrorCode;
+import com.inu.jeongbobada.domain.user.exception.VerificationRequiredException;
 import com.inu.jeongbobada.domain.user.repository.UserRepository;
 import com.inu.jeongbobada.global.exception.BusinessException;
 import com.inu.jeongbobada.global.file.FileStorage;
@@ -112,7 +114,20 @@ public class AuthService {
     @Transactional(noRollbackFor = BusinessException.class)
     public TokenResponse login(LoginRequest request) {
         User user = authenticate(request.studentId(), request.password());
+        // 비밀번호 확인 뒤에 본다. 앞에서 보면 비밀번호를 몰라도 "이 학번은 승인 대기 중"이라는 정보가 새어 나간다 (#142)
+        requireApproved(user);
         return issueTokens(user);
+    }
+
+    // 승인 대기·반려면 토큰을 주지 않는다 (#142 4단계). 화면이 팝업에 보여줄 신청일·반려 사유를 함께 담는다
+    private static void requireApproved(User user) {
+        switch (user.getVerificationStatus()) {
+            case APPROVED -> { }
+            case PENDING -> throw new VerificationRequiredException(UserErrorCode.VERIFICATION_PENDING,
+                VerificationBlockedResponse.pending(user.getVerificationRequestedAt()));
+            case REJECTED -> throw new VerificationRequiredException(UserErrorCode.VERIFICATION_REJECTED,
+                VerificationBlockedResponse.rejected(user.getRejectionReason()));
+        }
     }
 
     // 반려된 사용자가 새 서류로 다시 신청한다 (#142 3단계). 반려 사용자는 로그인 토큰이 없어서 학번 + 비밀번호로 본인을 확인한다.
@@ -189,6 +204,8 @@ public class AuthService {
             || user.getRefreshTokenExpiresAt().isBefore(LocalDateTime.now())) {
             throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
         }
+        // 로그인만 막으면, 차단 전에 받은 refresh token으로 14일 동안 계속 재발급받을 수 있다
+        requireApproved(user);
 
         return issueTokens(user);
     }

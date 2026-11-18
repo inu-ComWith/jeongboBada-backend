@@ -1,5 +1,6 @@
 package com.inu.jeongbobada.domain.user;
 
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder;
 
@@ -13,6 +14,11 @@ public final class SignupRequests {
         new MockMultipartFile("file", "proof.pdf", "application/pdf", "%PDF-1.7 test".getBytes());
 
     private SignupRequests() {
+    }
+
+    // 승인 전에는 로그인할 수 없다 (#142 4단계). 가입 후 로그인하는 테스트는 관리자 승인 대신 상태만 바꾼다
+    public static void approve(JdbcTemplate jdbcTemplate, String studentId) {
+        jdbcTemplate.update("update users set verification_status = 'APPROVED' where student_id = ?", studentId);
     }
 
     public static MockMultipartHttpServletRequestBuilder signup(String studentId, String password, String nickname, String email) {

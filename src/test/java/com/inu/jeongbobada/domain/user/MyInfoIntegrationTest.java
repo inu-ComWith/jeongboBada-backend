@@ -57,6 +57,7 @@ class MyInfoIntegrationTest {
         email = "me" + n + "@example.com";
         mockMvc.perform(SignupRequests.signup(studentId, "password1", nickname, email))
             .andExpect(status().isCreated());
+        SignupRequests.approve(jdbcTemplate, studentId);
     }
 
     @AfterEach

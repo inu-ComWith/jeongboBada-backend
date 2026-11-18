@@ -43,6 +43,11 @@ public record ApiResponse<T>(
         return new ApiResponse<>(errorCode.getHttpStatus(), false, null, errorCode.getCode(), message, null);
     }
 
+    // 화면이 에러와 함께 보여줄 값이 있을 때 (예: 승인 대기 팝업의 신청일). 다른 에러는 data가 없어서 JSON에서 빠진다
+    public static <T> ApiResponse<T> error(final BaseErrorCode errorCode, final T data) {
+        return new ApiResponse<>(errorCode.getHttpStatus(), false, data, errorCode.getCode(), errorCode.getMessage(), null);
+    }
+
     // 필드별 오류를 함께 내려줄 때. message는 대표 문구(첫 번째 오류), errors는 전체 목록.
     public static <T> ApiResponse<T> error(final BaseErrorCode errorCode, final String message, final List<FieldError> errors) {
         return new ApiResponse<>(errorCode.getHttpStatus(), false, null, errorCode.getCode(), message, errors);

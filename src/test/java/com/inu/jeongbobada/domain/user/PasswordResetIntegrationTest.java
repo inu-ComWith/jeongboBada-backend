@@ -86,6 +86,7 @@ class PasswordResetIntegrationTest {
 
         mockMvc.perform(SignupRequests.signup(account.studentId(), PASSWORD, account.nickname(), account.email()))
             .andExpect(status().isCreated());
+        SignupRequests.approve(jdbcTemplate, account.studentId());
         return account;
     }
 
