@@ -24,6 +24,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -115,12 +116,12 @@ class CourseKeywordSearchIntegrationTest {
         mockMvc.perform(get("/api/courses")
                 .param("keyword", "자료구조" + uniqueSuffix))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data[*].courseId", hasItem(course.getCourseId().intValue())));
+            .andExpect(jsonPath("$.data.courses[*].courseId", hasItem(course.getCourseId().intValue())));
 
         mockMvc.perform(get("/api/courses")
                 .param("keyword", "검색교수" + professorSuffix))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data[*].courseId", hasItem(course.getCourseId().intValue())));
+            .andExpect(jsonPath("$.data.courses[*].courseId", hasItem(course.getCourseId().intValue())));
     }
 
     @Test
@@ -128,23 +129,23 @@ class CourseKeywordSearchIntegrationTest {
         mockMvc.perform(get("/api/courses")
                 .param("keyword", "검 색 자 료 구 조 " + uniqueSuffix))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data[*].courseId", hasItem(course.getCourseId().intValue())));
+            .andExpect(jsonPath("$.data.courses[*].courseId", hasItem(course.getCourseId().intValue())));
     }
 
     @Test
     void 검색어를_생략하면_전체_활성_강의를_반환한다() throws Exception {
         mockMvc.perform(get("/api/courses"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data[*].courseId", hasItem(course.getCourseId().intValue())))
-            .andExpect(jsonPath("$.data[*].courseId", not(hasItem(inactiveCourse.getCourseId().intValue()))));
+            .andExpect(jsonPath("$.data.courses[*].courseId", hasItem(course.getCourseId().intValue())))
+            .andExpect(jsonPath("$.data.courses[*].courseId", not(hasItem(inactiveCourse.getCourseId().intValue()))));
     }
 
     @Test
     void 공백만_있는_검색어는_전체_활성_강의를_반환한다() throws Exception {
         mockMvc.perform(get("/api/courses").param("keyword", "   "))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data[*].courseId", hasItem(course.getCourseId().intValue())))
-            .andExpect(jsonPath("$.data[*].courseId", not(hasItem(inactiveCourse.getCourseId().intValue()))));
+            .andExpect(jsonPath("$.data.courses[*].courseId", hasItem(course.getCourseId().intValue())))
+            .andExpect(jsonPath("$.data.courses[*].courseId", not(hasItem(inactiveCourse.getCourseId().intValue()))));
     }
 
     @Test
@@ -152,7 +153,69 @@ class CourseKeywordSearchIntegrationTest {
         mockMvc.perform(get("/api/courses")
                 .param("keyword", "존재하지않는검색어" + uniqueSuffix))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").isEmpty());
+            .andExpect(jsonPath("$.data.courses").isEmpty())
+            .andExpect(jsonPath("$.data.totalElements").value(0))
+            .andExpect(jsonPath("$.data.totalPages").value(0))
+            .andExpect(jsonPath("$.data.hasNext").value(false));
+    }
+
+    @Test
+    void 검색_결과에_페이지_정보와_전체_개수를_반환한다() throws Exception {
+        mockMvc.perform(get("/api/courses")
+                .param("keyword", "자료구조" + uniqueSuffix)
+                .param("page", "0")
+                .param("size", "1"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.courses.length()").value(1))
+            .andExpect(jsonPath("$.data.page").value(0))
+            .andExpect(jsonPath("$.data.size").value(1))
+            .andExpect(jsonPath("$.data.totalElements").value(1))
+            .andExpect(jsonPath("$.data.totalPages").value(1))
+            .andExpect(jsonPath("$.data.hasNext").value(false));
+    }
+
+    @Test
+    void 강의명을_가나다순으로_정렬한다() throws Exception {
+        List<Course> sortedCourses = courseRepository.saveAll(List.of(
+            new Course("가나다 정렬 " + uniqueSuffix, "SORT-A-" + uniqueSuffix, "가나다순 테스트"),
+            new Course("데이터 정렬 " + uniqueSuffix, "SORT-D-" + uniqueSuffix, "가나다순 테스트"),
+            new Course("사물 정렬 " + uniqueSuffix, "SORT-S-" + uniqueSuffix, "가나다순 테스트")
+        ));
+        List<CourseOffering> sortedOfferings = courseOfferingRepository.saveAll(
+            sortedCourses.stream()
+                .map(sortedCourse -> new CourseOffering(
+                    sortedCourse, professor, 2026, Semester.FIRST, Grade.SECOND, Credits.THIRD,
+                    "수 1,2", CourseType.MAJOR_CORE, EvaluationType.RELATIVE, IsOnline.OFFLINE
+                ))
+                .toList()
+        );
+
+        try {
+            mockMvc.perform(get("/api/courses")
+                    .param("keyword", "정렬" + uniqueSuffix)
+                    .param("page", "0")
+                    .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.courses[*].courseName", contains(
+                    "가나다 정렬 " + uniqueSuffix,
+                    "데이터 정렬 " + uniqueSuffix,
+                    "사물 정렬 " + uniqueSuffix
+                )));
+        } finally {
+            courseOfferingRepository.deleteAll(sortedOfferings);
+            courseRepository.deleteAll(sortedCourses);
+        }
+    }
+
+    @Test
+    void 페이지_번호나_크기가_범위를_벗어나면_400을_반환한다() throws Exception {
+        mockMvc.perform(get("/api/courses").param("page", "-1"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
+
+        mockMvc.perform(get("/api/courses").param("size", "51"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
     }
 
     @Test

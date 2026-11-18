@@ -2,12 +2,16 @@ package com.inu.jeongbobada.domain.course.service;
 import com.inu.jeongbobada.domain.course.dto.response.CourseDetailResDto;
 import com.inu.jeongbobada.domain.course.dto.response.CourseListResDto;
 import com.inu.jeongbobada.domain.course.dto.response.CourseOfferingResDto;
+import com.inu.jeongbobada.domain.course.dto.response.CoursePageResDto;
 import com.inu.jeongbobada.domain.course.entity.Course;
+import com.inu.jeongbobada.domain.course.entity.CourseOffering;
 import com.inu.jeongbobada.domain.course.exception.CourseErrorCode;
 import com.inu.jeongbobada.domain.course.repository.CourseOfferingRepository;
 import com.inu.jeongbobada.domain.course.repository.CourseRepository;
 import com.inu.jeongbobada.global.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
@@ -22,17 +26,27 @@ public class CourseService {
 
 
     // 과목 리스트 전체 조회 (이번 학기 개설된 강의 기준)
-    public List<CourseListResDto> getCourses(String keyword) {
+    public CoursePageResDto getCourses(String keyword, int page, int size) {
         String normalizedKeyword = keyword.replaceAll("\\s+", "");
+        PageRequest pageable = PageRequest.of(page, size);
 
-        var offerings = normalizedKeyword.isEmpty()
-            ? courseOfferingRepository.findAllByActiveTrue()
-            : courseOfferingRepository.searchActiveByKeyword(normalizedKeyword);
+        Page<CourseOffering> offeringPage = normalizedKeyword.isEmpty()
+            ? courseOfferingRepository.findAllActive(pageable)
+            : courseOfferingRepository.searchActiveByKeyword(normalizedKeyword, pageable);
 
-        return offerings
+        List<CourseListResDto> courses = offeringPage.getContent()
             .stream()
             .map(CourseListResDto::from)
             .toList();
+
+        return new CoursePageResDto(
+            courses,
+            offeringPage.getNumber(),
+            offeringPage.getSize(),
+            offeringPage.getTotalElements(),
+            offeringPage.getTotalPages(),
+            offeringPage.hasNext()
+        );
     }
 
 
