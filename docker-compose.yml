@@ -11,7 +11,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-jeongbobada}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jeongbobada}
     ports:
-      - "5432:5432" # 호스트(로컬 PC) 5432 -> 컨테이너 5432. 로컬에 다른 PostgreSQL이 떠 있으면 충돌하니 꺼둘 것.
+        - "${POSTGRES_HOST_PORT:-5432}:5432" # 호스트(로컬 PC) 5432 -> 컨테이너 5432. 로컬에 다른 PostgreSQL이 떠 있으면 충돌하니 꺼둘 것.
     volumes:
       # named volume: 컨테이너를 지워도(docker compose down) 데이터는 남는다.
       # 데이터까지 지우려면 `docker compose down -v`
