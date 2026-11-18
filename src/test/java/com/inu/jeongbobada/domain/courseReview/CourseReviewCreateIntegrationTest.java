@@ -149,6 +149,23 @@ class CourseReviewCreateIntegrationTest {
             .andExpect(jsonPath("$.success").value(true));
     }
 
+    // #161: 같은 교수가 같은 과목을 두 학기 이상 개설해도 후기를 쓸 수 있다 (예전에는 개설 이력 조회가 한 건만 기대해 500)
+    @Test
+    void 같은_과목을_두_학기_개설한_교수에게도_강의평을_작성한다() throws Exception {
+        CourseOffering secondSemester = courseOfferingRepository.save(new CourseOffering(
+            course, professor, 2026, Semester.SECOND, Grade.SECOND, Credits.THIRD,
+            "화 1,2", CourseType.MAJOR_CORE, EvaluationType.RELATIVE, IsOnline.OFFLINE));
+        try {
+            createReview(login(), VALID_BODY.formatted(professor.getProfessorId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+        } finally {
+            courseReviewRepository.deleteAll(
+                courseReviewRepository.findAllByCourse_CourseIdOrderByCreatedAtDescReviewIdDesc(course.getCourseId()));
+            courseOfferingRepository.delete(secondSemester);
+        }
+    }
+
     @Test
     void 빈_요청이면_400이고_errors에_필수_필드가_담긴다() throws Exception {
         createReview(login(), "{}")
