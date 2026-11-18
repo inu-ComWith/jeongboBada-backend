@@ -5,7 +5,9 @@ import com.inu.jeongbobada.domain.user.dto.NicknameCheckResponse;
 import com.inu.jeongbobada.domain.user.dto.ReissueRequest;
 import com.inu.jeongbobada.domain.user.dto.SignupRequest;
 import com.inu.jeongbobada.domain.user.dto.TokenResponse;
+import com.inu.jeongbobada.domain.user.dto.VerificationResubmitRequest;
 import com.inu.jeongbobada.domain.user.entity.User;
+import com.inu.jeongbobada.domain.user.entity.VerificationStatus;
 import com.inu.jeongbobada.domain.user.exception.LoginLockedException;
 import com.inu.jeongbobada.domain.user.exception.UserErrorCode;
 import com.inu.jeongbobada.domain.user.repository.UserRepository;
@@ -109,7 +111,34 @@ public class AuthService {
     // 틀린 횟수는 예외가 나도 커밋돼야 해서 BusinessException으로 롤백하지 않는다.
     @Transactional(noRollbackFor = BusinessException.class)
     public TokenResponse login(LoginRequest request) {
-        User user = userRepository.findByStudentIdForUpdate(request.studentId())
+        User user = authenticate(request.studentId(), request.password());
+        return issueTokens(user);
+    }
+
+    // 반려된 사용자가 새 서류로 다시 신청한다 (#142 3단계). 반려 사용자는 로그인 토큰이 없어서 학번 + 비밀번호로 본인을 확인한다.
+    // 비밀번호 확인은 로그인과 같은 실패 횟수·잠금을 쓴다. 따로 두면 이 API로 로그인 잠금을 우회해 비밀번호를 계속 시도할 수 있다.
+    // 실패 횟수는 예외가 나도 커밋돼야 해서 BusinessException으로 롤백하지 않는다 (상태 변경은 모든 검사를 통과한 뒤에만 한다)
+    @Transactional(noRollbackFor = BusinessException.class)
+    public void resubmitVerification(VerificationResubmitRequest request) {
+        User user = authenticate(request.studentId(), request.password());
+        if (user.getVerificationStatus() != VerificationStatus.REJECTED) {
+            throw new BusinessException(UserErrorCode.VERIFICATION_NOT_REJECTED);
+        }
+
+        String documentKey = fileStorage.upload(VERIFICATION_PREFIX, request.file(),
+            VERIFICATION_DOCUMENT_TYPES, VERIFICATION_DOCUMENT_MAX_SIZE);
+        user.resubmitVerification(documentKey, LocalDateTime.now());
+        try {
+            userRepository.saveAndFlush(user);
+        } catch (RuntimeException e) {
+            deleteUploadedDocument(documentKey, e);
+            throw e;
+        }
+    }
+
+    // 학번·잠금·비밀번호를 확인한다. 틀리면 실패 횟수를 올리고, 5번째면 잠근다 (로그인과 재신청이 같이 쓴다)
+    private User authenticate(String studentId, String password) {
+        User user = userRepository.findByStudentIdForUpdate(studentId)
             .orElseThrow(() -> new BusinessException(UserErrorCode.STUDENT_ID_NOT_REGISTERED));
 
         LocalDateTime now = LocalDateTime.now();
@@ -118,15 +147,13 @@ public class AuthService {
         }
 
         try {
-            authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.studentId(), request.password())
-            );
+            authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(studentId, password));
         } catch (BadCredentialsException e) {
             throw recordLoginFailure(user, now);
         }
 
         user.clearLoginFailures();
-        return issueTokens(user);
+        return user;
     }
 
     private BusinessException recordLoginFailure(User user, LocalDateTime now) {

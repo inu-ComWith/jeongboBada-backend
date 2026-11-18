@@ -27,8 +27,14 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByNickname(String nickname);
     Optional<User> findByEmail(String email);
 
-    // 승인 대기 목록: 먼저 가입한 순 (#142)
-    List<User> findByVerificationStatusOrderByCreatedAtAsc(VerificationStatus status);
+    // 승인 대기 목록: 먼저 신청한 순 (#142). 재제출하면 그 시각 기준이라 뒤로 간다.
+    // 신청 시각 컬럼 전에 가입한 계정은 null이라 가입일로 대신한다
+    @Query("""
+        select u from User u
+        where u.verificationStatus = com.inu.jeongbobada.domain.user.entity.VerificationStatus.PENDING
+        order by coalesce(u.verificationRequestedAt, u.createdAt) asc
+        """)
+    List<User> findPendingVerifications();
 
     // 승인·반려 목록: 최근 처리한 순. 검토 없이 승인 상태인 기존 계정(처리 시각 null)은 빼서 관리자가 처리한 건만 보여준다
     @Query("""

@@ -85,8 +85,14 @@ API는 `/api/admin/verifications` (`AdminVerificationController`, `AdminVerifica
 - [ ] 관리자 계정 만들기: 아직 API가 없어 DB에서 직접 바꾼다 (`docs/auth-architecture.md` 관리자 승격 SQL)
 
 ### 3. 반려 후 재제출
-- [ ] 학번 + 비밀번호 + 새 서류 → `PENDING`, 이전 서류 key 교체
-- [ ] 통합 테스트
+- [x] `POST /api/auth/verification/resubmit` (multipart: 학번 + 비밀번호 + 새 서류) → `PENDING`, 새 서류 key, 반려 사유·처리 시각 비움
+  - 이전 서류는 반려할 때 이미 지웠으므로 새 서류만 올린다. 저장이 실패하면 올린 서류를 지운다 (가입과 같음)
+  - **비밀번호 확인은 로그인과 같은 실패 횟수·잠금을 쓴다** (`AuthService.authenticate`). 따로 두면 이 API로 로그인 잠금을 우회해 비밀번호를 계속 시도할 수 있다
+  - 반려 상태가 아니면 409 `VERIFICATION_NOT_REJECTED`
+  - 비밀번호를 잊은 반려 사용자는 비밀번호 찾기(로그인 불필요)로 재설정한 뒤 제출한다. 이메일까지 잊었으면 운영진 문의
+- [x] 신청일 `VERIFICATION_REQUESTED_AT` 추가: 가입·재제출 때 기록. 승인 대기 목록은 신청일 순, 목록의 `appliedAt`도 신청일
+  - 이 컬럼 전에 가입한 계정은 null이라 읽을 때 가입일로 대신한다 (`User.getVerificationRequestedAt`)
+- [x] 통합 테스트 `VerificationResubmitIntegrationTest` (성공 / 비밀번호 틀림 401 + 로그인과 같은 실패 횟수 / 반려 아님 409)
 
 ### 4. 승인 전 로그인 차단 켜기
 **1~3단계가 배포되고 관리자가 실제로 승인할 수 있는 걸 확인한 뒤에 켠다.** 먼저 켜면 새 가입자가 로그인도 못 하고 승인받을 방법도 없는 기간이 생긴다 (#142).

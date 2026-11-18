@@ -42,7 +42,7 @@ public class AdminVerificationService {
     @Transactional(readOnly = true)
     public List<VerificationSummaryResponse> getList(VerificationStatus status) {
         List<User> users = status == VerificationStatus.PENDING
-            ? userRepository.findByVerificationStatusOrderByCreatedAtAsc(status)
+            ? userRepository.findPendingVerifications()
             : userRepository.findProcessedByVerificationStatus(status);
         return users.stream().map(VerificationSummaryResponse::from).toList();
     }
