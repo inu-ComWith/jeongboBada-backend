@@ -6,6 +6,7 @@ import com.inu.jeongbobada.domain.user.dto.NicknameCheckResponse;
 import com.inu.jeongbobada.domain.user.dto.ReissueRequest;
 import com.inu.jeongbobada.domain.user.dto.SignupRequest;
 import com.inu.jeongbobada.domain.user.dto.TokenResponse;
+import com.inu.jeongbobada.domain.user.dto.VerificationResubmitRequest;
 import com.inu.jeongbobada.domain.user.service.AuthService;
 import com.inu.jeongbobada.global.common.ApiResponse;
 import com.inu.jeongbobada.global.exception.code.GlobalErrorCode;
@@ -29,6 +30,15 @@ public class AuthController {
         authService.signup(request);
 
         ApiResponse<Void> response = ApiResponse.created(null);
+        return ResponseEntity.status(response.httpStatus()).body(response);
+    }
+
+    // 반려된 사용자가 새 서류로 다시 신청한다 (#142 3단계). 반려 사용자는 로그인 토큰이 없어서 학번 + 비밀번호를 함께 받는다.
+    @PostMapping(value = "/verification/resubmit", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<Void>> resubmitVerification(@Valid @ModelAttribute VerificationResubmitRequest request) {
+        authService.resubmitVerification(request);
+
+        ApiResponse<Void> response = ApiResponse.ok(null);
         return ResponseEntity.status(response.httpStatus()).body(response);
     }
 

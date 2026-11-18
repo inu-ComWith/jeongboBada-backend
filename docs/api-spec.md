@@ -10,6 +10,7 @@
 |---|---|---|---|---|---|
 | GET | /api/auth/check-nickname?nickname= | 회원가입 폼에서 닉네임 사용 가능 여부 실시간 확인 | Query: <br/> `nickname` | 200 <br/> { "success": true, "data": { "available": true } } | 구현완료 |
 | POST | /api/auth/signup | 회원가입 (학번 기반) + 재학 증빙 서류 제출 | `multipart/form-data` <br/> `studentId`: "202012345" <br/> `password`: 영문+숫자 8~64자 <br/> `nickname`: 한글/영문/숫자 2~6자 <br/> `email`: "user@example.com" <br/> `file`: 재학 증빙 서류 (pdf·jpg, 최대 10MB) | 201 <br/> { "success": true, "data": null } | 구현완료 |
+| POST | /api/auth/verification/resubmit | 반려 후 서류 다시 제출 (로그인 불필요) | `multipart/form-data` <br/> `studentId`: "202012345" <br/> `password`: 가입 비밀번호 <br/> `file`: 새 재학 증빙 서류 (pdf·jpg, 최대 10MB) | 200 <br/> { "success": true, "data": null } | 구현완료 |
 | POST | /api/auth/login | 로그인 (JWT 발급) | { <br/> "studentId": "202012345", <br/> "password": "..." <br/>} | 200 <br/> { "success": true, "data": { <br/> "accessToken": "eyJ...", <br/> "refreshToken": "eyJ..." <br/>} } | 구현완료 |
 | POST | /api/auth/reissue | Access Token 재발급 | { <br/> "refreshToken": "eyJ..." <br/>} | 200 <br/> { "success": true, "data": { <br/> "accessToken": "eyJ...", <br/> "refreshToken": "eyJ..." <br/>} } | 구현완료 |
 | POST | /api/auth/logout | 로그아웃 (서버의 refresh token 무효화) | { <br/> "refreshToken": "..." <br/>} (권장) <br/> 또는 Header: `Authorization: Bearer {accessToken}` (예전 방식) | 200 <br/> { "success": true, "data": null } <br/> 둘 다 없으면 400 | 구현완료 |
@@ -30,8 +31,12 @@
   - 서류 오류: 없음 400 `FILE_EMPTY`, pdf·jpg가 아님 400 `FILE_TYPE_NOT_ALLOWED`, 10MB 초과 413 `FILE_TOO_LARGE`, 저장 실패 503 `FILE_UPLOAD_FAILED`. 학번·닉네임·이메일 중복(409)이면 서류는 저장하지 않는다
   - 가입하면 **승인 대기** 상태가 된다. 지금은 승인 전에도 로그인할 수 있고, 관리자 승인 API가 생긴 뒤 승인 전 로그인을 막는다 (`docs/student-verification-architecture.md` 4단계)
 - 새 비밀번호(가입·변경·재설정)는 64자 이하이면서 **72바이트 이하**여야 한다. 영문·숫자는 1바이트, 한글은 3바이트로 계산하며, 넘으면 400 `INVALID_INPUT_VALUE`
+- 반려 후 다시 제출(`POST /api/auth/verification/resubmit`): 반려된 사용자는 로그인 토큰이 없어서 **학번 + 비밀번호 + 새 서류**를 함께 보낸다. 성공하면 다시 승인 대기가 되고 신청일이 지금으로 바뀐다
+  - 학번·비밀번호 확인은 로그인과 같다: 없는 학번 404 `STUDENT_ID_NOT_REGISTERED`, 틀리면 401 `INVALID_CREDENTIALS`(n/5회), 5회 실패면 429 `LOGIN_LOCKED`. **실패 횟수는 로그인과 함께 센다**
+  - 반려 상태가 아니면 409 `VERIFICATION_NOT_REJECTED`. 서류 오류는 가입과 같다(`FILE_EMPTY`, `FILE_TYPE_NOT_ALLOWED`, `FILE_TOO_LARGE`, `FILE_UPLOAD_FAILED`)
+  - 비밀번호를 잊었으면 비밀번호 찾기로 먼저 재설정한다 (로그인 없이 쓸 수 있다)
 - 관리자 가입 검토(`/api/admin/verifications`)는 **ADMIN만** 호출할 수 있다. 토큰이 없으면 401, 일반 사용자면 403 `FORBIDDEN`
-  - 목록: `PENDING`은 먼저 가입한 순, `APPROVED`·`REJECTED`는 최근 처리한 순. 검토 없이 승인 상태인 기존 계정은 승인 목록에 나오지 않는다. `processedAt`은 승인일/거절일, `documentType`은 서류가 남아 있을 때(대기 중)만 값이 있다
+  - 목록: `PENDING`은 먼저 **신청한** 순(재제출하면 그 시각 기준), `APPROVED`·`REJECTED`는 최근 처리한 순. 검토 없이 승인 상태인 기존 계정은 승인 목록에 나오지 않는다. `appliedAt`은 신청일(재제출하면 그 날짜), `processedAt`은 승인일/거절일, `documentType`은 서류가 남아 있을 때(대기 중)만 값이 있다
   - 상세의 `documentUrl`은 **5분 뒤 만료**된다. 만료되면 상세를 다시 조회해 새 주소를 받는다. 서류가 없으면 null, 주소를 만들지 못하면 503 `FILE_URL_FAILED`
   - 승인·거절하면 서류를 바로 삭제하고 결과 메일을 보낸다. 메일·삭제가 실패해도 처리는 유지된다(서버 로그로 확인). 거절 사유는 앞뒤 공백을 지우고, 비우면 메일에 사유 줄이 빠진다
   - 승인 대기가 아닌 계정을 처리하면 409 `VERIFICATION_ALREADY_PROCESSED`, 없는 사용자는 404 `USER_NOT_FOUND`
@@ -172,6 +177,7 @@
 | 429 | `VERIFICATION_CODE_RESEND_TOO_FAST` | 인증코드 재발송 60초 제한 |
 | 429 | `PASSWORD_RESET_RESEND_LIMIT_EXCEEDED` | 비밀번호 찾기 재발송 하루 5회 초과 |
 | 429 | `LOGIN_LOCKED` | 로그인 5회 실패로 5분 잠금. 남은 시간(초)은 `Retry-After` 헤더 |
+| 409 | `VERIFICATION_NOT_REJECTED` | 반려 상태가 아닌데 서류를 다시 제출함 (이미 검토 중이거나 승인됨) |
 | 409 | `VERIFICATION_ALREADY_PROCESSED` | 관리자가 승인 대기가 아닌(이미 승인·거절된) 가입 신청을 처리하려 함 |
 | 503 | `EMAIL_SEND_FAILED` | 메일 발송 실패 |
 | 404 | `PROFESSOR_NOT_FOUND` | 존재하지 않는 교수 |

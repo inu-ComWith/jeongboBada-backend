@@ -56,6 +56,11 @@ public class User extends BaseEntity {
     @Column(name = "VERIFICATION_DOCUMENT_KEY", length = 100)
     private String verificationDocumentKey;
 
+    // 가입 신청(서류 제출) 시각. 반려 후 다시 제출하면 그 시각으로 바뀐다 (승인 대기 팝업의 신청일, 대기 목록 순서).
+    // 이 컬럼 전에 가입한 계정은 null이라 읽을 때 가입일로 대신한다 (getVerificationRequestedAt)
+    @Column(name = "VERIFICATION_REQUESTED_AT")
+    private LocalDateTime verificationRequestedAt;
+
     // 관리자가 승인·반려한 시각 (상태로 승인일/반려일을 구분한다). 검토 없이 승인 상태인 기존 계정은 null
     @Column(name = "VERIFICATION_PROCESSED_AT")
     private LocalDateTime verificationProcessedAt;
@@ -66,7 +71,7 @@ public class User extends BaseEntity {
 
     @Builder(access = AccessLevel.PRIVATE)
     private User(String studentId, String password, String nickname, UserRole userRole, String department, String email,
-                 VerificationStatus verificationStatus, String verificationDocumentKey) {
+                 VerificationStatus verificationStatus, String verificationDocumentKey, LocalDateTime verificationRequestedAt) {
         this.studentId = studentId;
         this.password = password;
         this.nickname = nickname;
@@ -75,6 +80,7 @@ public class User extends BaseEntity {
         this.email = email;
         this.verificationStatus = verificationStatus;
         this.verificationDocumentKey = verificationDocumentKey;
+        this.verificationRequestedAt = verificationRequestedAt;
     }
 
     // 비밀번호 찾기 / 이메일 변경 인증코드는 용도별로 컬럼을 분리한다.
@@ -200,6 +206,19 @@ public class User extends BaseEntity {
         clearEmailChange();
     }
 
+    public LocalDateTime getVerificationRequestedAt() {
+        return verificationRequestedAt != null ? verificationRequestedAt : getCreatedAt();
+    }
+
+    // 반려 후 새 서류로 다시 신청. 이전 서류는 반려할 때 이미 지웠다
+    public void resubmitVerification(String documentKey, LocalDateTime now) {
+        this.verificationStatus = VerificationStatus.PENDING;
+        this.verificationDocumentKey = documentKey;
+        this.verificationRequestedAt = now;
+        this.verificationProcessedAt = null;
+        this.rejectionReason = null;
+    }
+
     // 처리하면 서류는 바로 지운다(승인 후 삭제 안내). S3 삭제는 커밋 뒤에 서비스가 하고, 여기서는 key만 비운다
     public void approveVerification(LocalDateTime now) {
         this.verificationStatus = VerificationStatus.APPROVED;
@@ -226,6 +245,7 @@ public class User extends BaseEntity {
             .email(email)
             .verificationStatus(VerificationStatus.PENDING)
             .verificationDocumentKey(verificationDocumentKey)
+            .verificationRequestedAt(LocalDateTime.now())
             .build();
     }
 }

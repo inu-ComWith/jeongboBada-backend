@@ -120,5 +120,7 @@ class SignupVerificationDocumentIntegrationTest {
         User user = userRepository.findByStudentId(studentId).orElseThrow();
         assertThat(user.getVerificationStatus()).isEqualTo(VerificationStatus.APPROVED);
         assertThat(user.getVerificationDocumentKey()).isNull();
+        // 신청 시각 컬럼이 없던 계정은 가입일을 신청일로 쓴다
+        assertThat(user.getVerificationRequestedAt()).isEqualTo(user.getCreatedAt());
     }
 }
