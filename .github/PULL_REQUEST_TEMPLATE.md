@@ -1,9 +1,9 @@
 <!--
-제목 규칙: <타입>: <한 줄 요약>   예) feat: 교수 정보 조회 API 구현
-타입 → feat | fix | refactor | docs | test | chore | perf
-  feat=기능추가  fix=버그수정  refactor=동작변화없는구조개선
-  docs=문서  test=테스트  chore=빌드/설정/의존성  perf=성능
-브랜치는 main 대상으로 올립니다.
+제목 규칙: <이모지> <타입>: <한 줄 요약>   예) ✨ feat: 교수 정보 조회 API 구현
+타입과 이모지 (AGENTS.md "커밋·PR 제목")
+  ✨ feat=기능추가  🔨 fix=버그수정  🚑 hotfix=급한 수정  ♻️ refactor=동작변화없는구조개선
+  📝 docs=문서  ✅ test=테스트  🔧 chore=빌드/설정/의존성  👷 ci=CI  ⚡ perf=성능
+브랜치는 develop 대상으로 올립니다.
 -->
 
 ## 요약

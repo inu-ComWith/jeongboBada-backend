@@ -1,8 +1,8 @@
 ---
-name: 🐞 버그 리포트
+name: 🔨 버그 리포트
 about: 의도와 다르게 동작하는 문제를 보고합니다
-title: "fix: "
-labels: bug
+title: "🔨 fix: "
+labels: "🔨 bug"
 assignees: ''
 ---
 

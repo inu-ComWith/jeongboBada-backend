@@ -26,6 +26,24 @@
   - 다른 도구는 이 규칙을 직접 지킨다. 붙어 있으면 CI의 "AI 서명 검사"(`scripts/ci/check-no-ai-attribution.sh`)가 실패한다
   - 머지 전 커밋 메시지는 로컬에서 확인할 수 있다: `git log --format=%B origin/develop..HEAD | bash scripts/ci/check-no-ai-attribution.sh`
 
+## 커밋·PR 제목
+`<이모지> <타입>: <한 줄 요약>` 형식으로 쓴다 (Gitmoji). 예) `✨ feat: 교수 정보 조회 API 구현`, `🔨 fix: 후기 작성 500 수정`
+
+| 타입 | 이모지 | 언제 | 라벨 |
+|---|---|---|---|
+| feat | ✨ | 새 기능 | `✨ enhancement` |
+| fix | 🔨 | 버그 수정 | `🔨 bug` |
+| hotfix | 🚑 | 배포 서버의 급한 수정 | `🔨 bug` |
+| refactor | ♻️ | 동작은 그대로인 구조 개선 | `✨ enhancement` |
+| docs | 📝 | 문서 | `📝 documentation` |
+| test | ✅ | 테스트만 추가·수정 | `✨ enhancement` |
+| chore | 🔧 | 빌드·설정·의존성 | `✨ enhancement` |
+| ci | 👷 | CI·GitHub Actions | `✨ enhancement` |
+| perf | ⚡ | 성능 개선 | `✨ enhancement` |
+
+- 이슈 제목도 같은 형식이다 (이슈 템플릿에 기본으로 들어 있다)
+- 이미 머지된 커밋 제목은 바꾸지 않는다 (히스토리를 다시 써야 한다)
+
 ## 코드 작성 원칙: 아직 일어나지 않은 일을 예상해서 코드를 짜지 않는다
 지금 요구사항과 지금 코드에 필요한 것만 작성한다. 미래를 예상해서 넣은 코드는 대부분 쓰이지 않고, 코드만 이상하게 만든다.
 
