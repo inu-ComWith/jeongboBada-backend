@@ -173,6 +173,20 @@ class CourseKeywordSearchIntegrationTest {
     }
 
     @Test
+    void 검색어의_퍼센트와_밑줄은_와일드카드가_아니라_글자로_찾는다() throws Exception {
+        // 와일드카드로 해석되면 '%'는 "구조", '__'는 "구조" 두 글자와 맞아서 이 과목이 검색된다
+        mockMvc.perform(get("/api/courses")
+                .param("keyword", "자료%" + uniqueSuffix))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.courses[*].courseId", not(hasItem(course.getCourseId().intValue()))));
+
+        mockMvc.perform(get("/api/courses")
+                .param("keyword", "자료__" + uniqueSuffix))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.courses[*].courseId", not(hasItem(course.getCourseId().intValue()))));
+    }
+
+    @Test
     void 검색_결과에_페이지_정보와_전체_개수를_반환한다() throws Exception {
         mockMvc.perform(get("/api/courses")
                 .param("keyword", "자료구조" + uniqueSuffix)
@@ -223,6 +237,10 @@ class CourseKeywordSearchIntegrationTest {
     @Test
     void 페이지_번호나_크기가_범위를_벗어나면_400을_반환한다() throws Exception {
         mockMvc.perform(get("/api/courses").param("page", "-1"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
+
+        mockMvc.perform(get("/api/courses").param("page", "2147483647"))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
 

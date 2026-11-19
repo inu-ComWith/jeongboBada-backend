@@ -26,7 +26,9 @@ public class CourseController {
         @Size(max = 50, message = "검색어는 50자 이하여야 합니다.")
         String keyword,
         @RequestParam(defaultValue = "0")
+        // 상한이 없으면 page×size가 int 범위를 넘어 Spring Data가 예외를 던지고 500이 된다
         @Min(value = 0, message = "페이지 번호는 0 이상이어야 합니다.")
+        @Max(value = 10_000, message = "페이지 번호는 10000 이하여야 합니다.")
          int page,
 
         @RequestParam(defaultValue = "10")

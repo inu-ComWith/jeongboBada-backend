@@ -42,7 +42,7 @@ public class CourseService {
             );
         } else {
             offeringPage = courseOfferingRepository.searchActiveByKeyword(
-                normalizedKeyword,
+                escapeLikeWildcards(normalizedKeyword),
                 pageable
             );
         }
@@ -60,6 +60,14 @@ public class CourseService {
             offeringPage.getTotalPages(),
             offeringPage.hasNext()
         );
+    }
+
+    // 검색어의 %, _가 LIKE 와일드카드로 해석되면 '%' 한 글자로 전체 강의가 검색된다. 쿼리의 escape '\\'와 짝을 이룬다
+    private String escapeLikeWildcards(String keyword) {
+        return keyword
+            .replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_");
     }
 
     private boolean isInitialConsonantKeyword(String keyword) {
