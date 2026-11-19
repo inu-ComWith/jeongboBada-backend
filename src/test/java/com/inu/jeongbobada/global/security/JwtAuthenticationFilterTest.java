@@ -10,6 +10,9 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -68,7 +71,7 @@ class JwtAuthenticationFilterTest {
         request.addHeader("Authorization", "Bearer invalid-token");
         MockHttpServletResponse response = new MockHttpServletResponse();
         FilterChain filterChain = mock(FilterChain.class);
-        when(jwtTokenProvider.validateToken("invalid-token")).thenReturn(false);
+        when(jwtTokenProvider.resolveAccessTokenStudentId("invalid-token")).thenReturn(Optional.empty());
 
         // when
         filter.doFilterInternal(request, response, filterChain);
@@ -87,8 +90,7 @@ class JwtAuthenticationFilterTest {
         FilterChain filterChain = mock(FilterChain.class);
 
         UserDetails userDetails = mock(CustomUserDetails.class);
-        when(jwtTokenProvider.validateToken("valid-token")).thenReturn(true);
-        when(jwtTokenProvider.getStudentId("valid-token")).thenReturn("202012345");
+        when(jwtTokenProvider.resolveAccessTokenStudentId("valid-token")).thenReturn(Optional.of("202012345"));
         when(studentUserDetailsService.loadUserByUsername("202012345")).thenReturn(userDetails);
 
         // when
@@ -99,6 +101,26 @@ class JwtAuthenticationFilterTest {
         assertThat(authentication).isNotNull();
         assertThat(authentication.getPrincipal()).isEqualTo(userDetails);
         assertThat(authentication.isAuthenticated()).isTrue();
+        verify(filterChain).doFilter(request, response);
+    }
+
+    @Test
+    void 유효한_토큰이어도_사용자가_DB에_없으면_예외없이_인증하지_않고_통과시킨다() throws Exception {
+        // given: 서명·만료는 유효하지만 그 사이 탈퇴/삭제된 사용자의 토큰 (#110)
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization", "Bearer deleted-user-token");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain filterChain = mock(FilterChain.class);
+
+        when(jwtTokenProvider.resolveAccessTokenStudentId("deleted-user-token")).thenReturn(Optional.of("202012345"));
+        when(studentUserDetailsService.loadUserByUsername("202012345"))
+            .thenThrow(new UsernameNotFoundException("존재하지 않는 학번입니다"));
+
+        // when
+        filter.doFilterInternal(request, response, filterChain);
+
+        // then
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
         verify(filterChain).doFilter(request, response);
     }
 }

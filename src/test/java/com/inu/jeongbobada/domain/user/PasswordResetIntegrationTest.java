@@ -1,0 +1,409 @@
+package com.inu.jeongbobada.domain.user;
+
+import com.inu.jeongbobada.domain.user.repository.UserRepository;
+import com.inu.jeongbobada.global.file.FileStorage;
+import com.inu.jeongbobada.global.mail.EmailSender;
+import com.jayway.jsonpath.JsonPath;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+// 실제 DB(PostgreSQL)에 저장/조회하면서 컨트롤러 → 서비스 → 트랜잭션 → JPA 전체 경로를 검증한다.
+// 서비스 단위 테스트(mock)로는 잡히지 않는 것들이 목적:
+//  - 틀린 코드 예외가 나도 "실패 횟수"가 DB에 커밋되는가 (noRollbackFor)
+//  - Embedded 인증코드가 저장/조회/폐기(null)되는가
+//  - SecurityConfig 경로 규칙 (/api/auth/** 공개, /api/users/me/** 인증 필요)
+// 테스트는 트랜잭션으로 감싸지 않고, 만든 사용자는 끝나고 직접 지운다.
+// 필요한 설정(ddl-auto, 테스트 전용 jwt.*)은 개발자 로컬의 application.yml이 아니라
+// src/test/resources/application-test.properties에서 받는다. 프로필을 빼면 CI(설정 파일 없음)에서 실패한다.
+@SpringBootTest
+@ActiveProfiles("test")
+@AutoConfigureMockMvc
+class PasswordResetIntegrationTest {
+
+    // 가입 때 재학 증빙 서류를 S3에 올리는 부분. 이 테스트는 서류와 무관해서 S3를 부르지 않게 바꾼다
+    @MockitoBean
+    private FileStorage fileStorage;
+
+    private static final String PASSWORD = "password1";
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @MockitoBean
+    private EmailSender emailSender;
+
+    private final List<String> createdStudentIds = new ArrayList<>();
+
+    @AfterEach
+    void cleanUp() {
+        createdStudentIds.forEach(id -> userRepository.findByStudentId(id).ifPresent(userRepository::delete));
+    }
+
+    // 테스트끼리 / 기존 DB 데이터와 겹치지 않도록 매번 랜덤 값을 쓴다
+    private record Account(String studentId, String nickname, String email) {
+    }
+
+    private Account signup() throws Exception {
+        int n = ThreadLocalRandom.current().nextInt(100_000_000);
+        Account account = new Account(
+            String.format("9%08d", n), "t" + String.format("%05d", n % 100_000), "it" + n + "@example.com");
+        createdStudentIds.add(account.studentId());
+
+        mockMvc.perform(SignupRequests.signup(account.studentId(), PASSWORD, account.nickname(), account.email()))
+            .andExpect(status().isCreated());
+        SignupRequests.approve(jdbcTemplate, account.studentId());
+        return account;
+    }
+
+    private ResultActions postJson(String path, String json) throws Exception {
+        return mockMvc.perform(post(path).contentType(MediaType.APPLICATION_JSON).content(json));
+    }
+
+    private ResultActions sendCode(Account account) throws Exception {
+        return postJson("/api/auth/password-reset/send-code",
+            """
+            {"studentId":"%s","email":"%s"}
+            """.formatted(account.studentId(), account.email()));
+    }
+
+    private String sentCode(String to) {
+        ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
+        verify(emailSender).send(eq(to), anyString(), body.capture());
+        Matcher matcher = Pattern.compile("\\d{6}").matcher(body.getValue());
+        assertThat(matcher.find()).isTrue();
+        return matcher.group();
+    }
+
+    private String login(Account account, String password) throws Exception {
+        String body = postJson("/api/auth/login",
+            """
+            {"studentId":"%s","password":"%s"}
+            """.formatted(account.studentId(), password))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        return JsonPath.read(body, "$.data.accessToken");
+    }
+
+    @Test
+    void 비밀번호_찾기_전체_흐름_코드발송_확인_재설정_새비밀번호로_로그인() throws Exception {
+        Account account = signup();
+
+        sendCode(account)
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.resendCount").value(0))
+            .andExpect(jsonPath("$.data.maxResendCount").value(5));
+        String code = sentCode(account.email());
+
+        postJson("/api/auth/password-reset/verify-code",
+            """
+            {"studentId":"%s","code":"%s"}
+            """.formatted(account.studentId(), code))
+            .andExpect(status().isOk());
+
+        String resetJson = """
+            {"studentId":"%s","code":"%s","newPassword":"newPassword1"}
+            """.formatted(account.studentId(), code);
+        postJson("/api/auth/password-reset", resetJson).andExpect(status().isOk());
+
+        // 새 비밀번호로만 로그인된다
+        login(account, "newPassword1");
+        postJson("/api/auth/login",
+            """
+            {"studentId":"%s","password":"%s"}
+            """.formatted(account.studentId(), PASSWORD))
+            .andExpect(status().isUnauthorized());
+
+        // 코드는 1회용 — DB에서 폐기돼 같은 코드로 다시 재설정할 수 없다
+        postJson("/api/auth/password-reset", resetJson)
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("INVALID_VERIFICATION_CODE"));
+    }
+
+    @Test
+    void 코드를_다섯_번_틀리면_DB에서_폐기돼서_올바른_코드도_통하지_않는다() throws Exception {
+        Account account = signup();
+        postJson("/api/auth/password-reset/send-code",
+            """
+            {"studentId":"%s","email":"%s"}
+            """.formatted(account.studentId(), account.email()))
+            .andExpect(status().isOk());
+        String code = sentCode(account.email());
+        String wrong = code.equals("000000") ? "111111" : "000000";
+
+        // 요청 하나하나가 별도 트랜잭션 — 예외로 롤백됐다면 횟수가 쌓이지 않아 여기서 계속 400만 나오고
+        // 마지막의 "올바른 코드"가 통과해버린다.
+        String wrongJson = """
+            {"studentId":"%s","code":"%s"}
+            """.formatted(account.studentId(), wrong);
+        for (int i = 1; i <= 4; i++) {
+            postJson("/api/auth/password-reset/verify-code", wrongJson)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PASSWORD_RESET_CODE_MISMATCH"))
+                .andExpect(jsonPath("$.message").value("인증번호가 일치하지 않아요 (%d/5회)".formatted(i)));
+        }
+        postJson("/api/auth/password-reset/verify-code", wrongJson)
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("PASSWORD_RESET_CODE_ATTEMPTS_EXCEEDED"));
+
+        postJson("/api/auth/password-reset/verify-code",
+            """
+            {"studentId":"%s","code":"%s"}
+            """.formatted(account.studentId(), code))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("INVALID_VERIFICATION_CODE"));
+    }
+
+    @Test
+    void 시간이_지난_코드는_만료_에러다() throws Exception {
+        Account account = signup();
+        sendCode(account).andExpect(status().isOk());
+        String code = sentCode(account.email());
+        jdbcTemplate.update("""
+            update users set password_reset_code_expires_at = password_reset_code_issued_at
+            where student_id = ?
+            """, account.studentId());
+
+        postJson("/api/auth/password-reset/verify-code",
+            """
+            {"studentId":"%s","code":"%s"}
+            """.formatted(account.studentId(), code))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("PASSWORD_RESET_CODE_EXPIRED"));
+    }
+
+    @Test
+    void 이전과_같은_비밀번호로는_재설정할_수_없고_같은_코드로_다시_시도할_수_있다() throws Exception {
+        Account account = signup();
+        sendCode(account).andExpect(status().isOk());
+        String code = sentCode(account.email());
+
+        postJson("/api/auth/password-reset",
+            """
+            {"studentId":"%s","code":"%s","newPassword":"%s"}
+            """.formatted(account.studentId(), code, PASSWORD))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("PASSWORD_RESET_SAME_PASSWORD"));
+
+        postJson("/api/auth/password-reset",
+            """
+            {"studentId":"%s","code":"%s","newPassword":"newPassword1"}
+            """.formatted(account.studentId(), code))
+            .andExpect(status().isOk());
+        login(account, "newPassword1");
+    }
+
+    @Test
+    void 재설정에_성공하면_로그인_잠금이_풀린다() throws Exception {
+        Account account = signup();
+        String wrongLogin = """
+            {"studentId":"%s","password":"wrongPassword1"}
+            """.formatted(account.studentId());
+        for (int i = 0; i < 5; i++) {
+            postJson("/api/auth/login", wrongLogin);
+        }
+        postJson("/api/auth/login", wrongLogin).andExpect(status().isTooManyRequests());
+
+        sendCode(account).andExpect(status().isOk());
+        postJson("/api/auth/password-reset",
+            """
+            {"studentId":"%s","code":"%s","newPassword":"newPassword1"}
+            """.formatted(account.studentId(), sentCode(account.email())))
+            .andExpect(status().isOk());
+
+        login(account, "newPassword1");
+    }
+
+    @Test
+    void 없는_학번과_틀린_이메일은_404이고_메일은_안_간다() throws Exception {
+        Account account = signup();
+
+        postJson("/api/auth/password-reset/send-code",
+            """
+            {"studentId":"%s","email":"someone@example.com"}
+            """.formatted(account.studentId()))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("PASSWORD_RESET_ACCOUNT_NOT_FOUND"));
+        postJson("/api/auth/password-reset/send-code",
+            """
+            {"studentId":"000000000","email":"%s"}
+            """.formatted(account.email()))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("PASSWORD_RESET_ACCOUNT_NOT_FOUND"));
+
+        verify(emailSender, never()).send(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void 이메일_형식이_틀리면_와이어프레임_문구로_400이다() throws Exception {
+        postJson("/api/auth/password-reset/send-code",
+            """
+            {"studentId":"202301589","email":"squirrel@inu"}
+            """)
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errors[0].field").value("email"))
+            .andExpect(jsonPath("$.errors[0].message").value("이메일 형식이 올바르지 않아요 (예: name@inu.ac.kr)"));
+    }
+
+    @Test
+    void 쿨다운이_지나면_재발송되고_횟수를_알려주며_쿨다운_안에는_429다() throws Exception {
+        Account account = signup();
+        sendCode(account).andExpect(status().isOk());
+
+        sendCode(account)
+            .andExpect(status().isTooManyRequests())
+            .andExpect(jsonPath("$.code").value("VERIFICATION_CODE_RESEND_TOO_FAST"));
+
+        jdbcTemplate.update("""
+            update users set password_reset_code_issued_at = password_reset_code_issued_at - interval '61 seconds'
+            where student_id = ?
+            """, account.studentId());
+
+        sendCode(account)
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.resendCount").value(1));
+    }
+
+    @Test
+    void 오늘_재발송을_다_쓰면_429이고_메일은_안_간다() throws Exception {
+        Account account = signup();
+        jdbcTemplate.update(
+            "update users set password_reset_send_count = 6, password_reset_send_date = ? where student_id = ?",
+            LocalDate.now(ZoneId.of("Asia/Seoul")), account.studentId());
+
+        sendCode(account)
+            .andExpect(status().isTooManyRequests())
+            .andExpect(jsonPath("$.code").value("PASSWORD_RESET_RESEND_LIMIT_EXCEEDED"));
+
+        verify(emailSender, never()).send(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void 메일_발송이_실패하면_503이고_코드와_횟수가_남지_않는다() throws Exception {
+        Account account = signup();
+        doThrow(new IllegalStateException("smtp down")).when(emailSender).send(anyString(), anyString(), anyString());
+
+        sendCode(account)
+            .andExpect(status().isServiceUnavailable())
+            .andExpect(jsonPath("$.code").value("EMAIL_SEND_FAILED"));
+
+        var user = userRepository.findByStudentId(account.studentId()).orElseThrow();
+        assertThat(user.getPasswordResetCode()).isNull();
+        assertThat(user.getPasswordResetSendDate()).isNull();
+    }
+
+    @Test
+    void 이미_가입된_이메일로는_회원가입할_수_없다() throws Exception {
+        Account account = signup();
+
+        mockMvc.perform(SignupRequests.signup("8" + account.studentId().substring(1), PASSWORD,
+                "x" + account.nickname().substring(1), account.email().toUpperCase()))
+            .andExpect(status().isConflict());
+    }
+
+    @Test
+    void 이메일_변경_2단계_새이메일로_코드받고_코드와_현재비밀번호로_변경() throws Exception {
+        Account account = signup();
+        String token = login(account, PASSWORD);
+        String newEmail = "changed" + account.studentId() + "@example.com";
+
+        // 로그인 없이는 접근 불가
+        postJson("/api/users/me/email/send-code", """
+            {"newEmail":"%s"}
+            """.formatted(newEmail))
+            .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/users/me/email/send-code")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"newEmail":"%s"}
+                    """.formatted(newEmail)))
+            .andExpect(status().isOk());
+        String code = sentCode(newEmail);
+
+        // 현재 비밀번호가 틀리면 코드가 맞아도 거부
+        mockMvc.perform(patch("/api/users/me/email")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"newEmail":"%s","code":"%s","currentPassword":"wrongPassword1"}
+                    """.formatted(newEmail, code)))
+            // 401이 아니라 400 — 401이면 프론트 인터셉터가 토큰 재발급/로그아웃으로 오인한다 (#115)
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("CURRENT_PASSWORD_MISMATCH"));
+        assertThat(userRepository.findByStudentId(account.studentId()).orElseThrow().getEmail())
+            .isEqualTo(account.email());
+
+        mockMvc.perform(patch("/api/users/me/email")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"newEmail":"%s","code":"%s","currentPassword":"%s"}
+                    """.formatted(newEmail, code, PASSWORD)))
+            .andExpect(status().isOk());
+
+        var user = userRepository.findByStudentId(account.studentId()).orElseThrow();
+        assertThat(user.getEmail()).isEqualTo(newEmail);
+        assertThat(user.getEmailChangeCode()).isNull();
+        assertThat(user.getPendingEmail()).isNull();
+    }
+
+    @Test
+    void 이메일_변경용_코드로는_비밀번호_재설정이_안_된다() throws Exception {
+        Account account = signup();
+        String token = login(account, PASSWORD);
+        String attackerEmail = "attacker" + account.studentId() + "@example.com";
+
+        mockMvc.perform(post("/api/users/me/email/send-code")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"newEmail":"%s"}
+                    """.formatted(attackerEmail)))
+            .andExpect(status().isOk());
+        String emailChangeCode = sentCode(attackerEmail);
+
+        postJson("/api/auth/password-reset",
+            """
+            {"studentId":"%s","code":"%s","newPassword":"hacked12345"}
+            """.formatted(account.studentId(), emailChangeCode))
+            .andExpect(status().isBadRequest());
+
+        login(account, PASSWORD); // 비밀번호는 그대로
+    }
+}

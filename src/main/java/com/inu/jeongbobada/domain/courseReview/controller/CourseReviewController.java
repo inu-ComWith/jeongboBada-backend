@@ -1,13 +1,15 @@
 package com.inu.jeongbobada.domain.courseReview.controller;
 
 import com.inu.jeongbobada.domain.courseReview.dto.request.ReviewCreateReqDto;
+import com.inu.jeongbobada.domain.courseReview.dto.request.ReviewUpdateReqDto;
 import com.inu.jeongbobada.domain.courseReview.dto.response.ReviewResDto;
 import com.inu.jeongbobada.domain.courseReview.enums.ReviewSort;
 import com.inu.jeongbobada.domain.courseReview.service.CourseReviewService;
 import com.inu.jeongbobada.domain.user.security.CustomUserDetails;
 import com.inu.jeongbobada.global.common.ApiResponse;
-import com.inu.jeongbobada.global.exception.BusinessException;
-import com.inu.jeongbobada.global.exception.code.GlobalErrorCode;
+import com.inu.jeongbobada.global.config.OpenApiConfig;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -24,19 +26,15 @@ public class CourseReviewController {
 
     //과목 후기 등록
 
+    // SecurityConfig에서 POST만 authenticated() — Swagger에도 로그인 필요로 표시
+    @SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME_NAME)
     @PostMapping("/{courseId}/reviews")
     // ApiResponse로 감싼 응답을 반환
     public ResponseEntity<ApiResponse<String>> createReview(
         @PathVariable Long courseId, //URL COURSEID 가져옴
-        @RequestBody ReviewCreateReqDto request, //JSON을 req dto로 받음
+        @Valid @RequestBody ReviewCreateReqDto request, //JSON을 req dto로 받음 (필수값 누락은 400)
         @AuthenticationPrincipal CustomUserDetails user
     ) {
-
-        if (user == null) {
-            throw new BusinessException(GlobalErrorCode.UNAUTHORIZED);
-        }// 사용자 x -> 예외처리
-
-
         String message = courseReviewService.createReview(user.getUserId(), courseId, request);
 
         // 메서드 반환 타입에 맞춰 등록 결과를 공통 응답으로 감쌈
@@ -58,12 +56,44 @@ public class CourseReviewController {
         // TODO: 후기 목록 조회(읽기)는 비로그인도 볼 수 있어야 해서 이 체크는 버그 (docs/bugs.md 참고).
         // 원래 담당자 확인 후 정식으로 제거하기 전까지 임시로 주석 처리.
         // if (user == null) {
-        //     throw new BusinessException(GlobalErrorCode.UNAUTHORIZED);
+        //     throw new BusinessException(GlobalErrorCode.AUTHENTICATION_REQUIRED);
         // }
 
 
         List<ReviewResDto> response = courseReviewService.getReviews(courseId, sort);
 
         return ResponseEntity.ok(ApiResponse.ok(response));
+    }
+
+    // 본인이 작성한 과목 후기 삭제
+    @SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME_NAME)
+    @DeleteMapping("/{courseId}/reviews/{reviewId}")
+    public ResponseEntity<ApiResponse<String>> deleteReview(
+        @PathVariable Long courseId,
+        @PathVariable Long reviewId,
+        @AuthenticationPrincipal CustomUserDetails user
+    ) {
+        String message = courseReviewService.deleteReview(user.getUserId(), courseId, reviewId);
+
+        return ResponseEntity.ok(ApiResponse.ok(message));
+    }
+
+    // 본인이 작성한 과목 후기 수정
+    @SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME_NAME)
+    @PutMapping("/{courseId}/reviews/{reviewId}")
+    public ResponseEntity<ApiResponse<String>> updateReview(
+        @PathVariable Long courseId,
+        @PathVariable Long reviewId,
+        @Valid @RequestBody ReviewUpdateReqDto request,
+        @AuthenticationPrincipal CustomUserDetails user
+    ) {
+        String message = courseReviewService.updateReview(
+            user.getUserId(),
+            courseId,
+            reviewId,
+            request
+        );
+
+        return ResponseEntity.ok(ApiResponse.ok(message));
     }
 }

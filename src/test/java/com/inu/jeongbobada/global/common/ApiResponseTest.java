@@ -44,18 +44,19 @@ class ApiResponseTest {
     }
 
     @Test
-    void error_응답은_data는_숨기고_message만_내려간다() throws Exception {
+    void error_응답은_data는_숨기고_code와_바꾼_message가_내려간다() throws Exception {
         // given
-        String message = "잘못된 요청입니다";
+        String message = "학번은 필수입니다.";
 
         // when
-        ApiResponse<Void> response = ApiResponse.error(HttpStatus.BAD_REQUEST, message);
+        ApiResponse<Void> response = ApiResponse.error(GlobalErrorCode.INVALID_INPUT_VALUE, message);
         JsonNode json = objectMapper.readTree(objectMapper.writeValueAsString(response));
 
         // then
         assertThat(response.httpStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.success()).isFalse();
         assertThat(json.has("data")).isFalse();
+        assertThat(json.get("code").asText()).isEqualTo("INVALID_INPUT_VALUE");
         assertThat(json.get("message").asText()).isEqualTo(message);
     }
 
@@ -72,5 +73,22 @@ class ApiResponseTest {
         assertThat(response.httpStatus()).isEqualTo(errorCode.getHttpStatus());
         assertThat(json.get("code").asText()).isEqualTo(errorCode.getCode());
         assertThat(json.get("message").asText()).isEqualTo(errorCode.getMessage());
+    }
+
+    @Test
+    void 필드별_오류가_있으면_errors로_내려가고_없으면_빠진다() throws Exception {
+        // given
+        ApiResponse<Void> withErrors = ApiResponse.error(GlobalErrorCode.INVALID_INPUT_VALUE, "학번은 필수입니다.",
+            java.util.List.of(new ApiResponse.FieldError("studentId", "학번은 필수입니다.")));
+        ApiResponse<Void> withoutErrors = ApiResponse.error(GlobalErrorCode.INVALID_INPUT_VALUE);
+
+        // when
+        JsonNode json = objectMapper.readTree(objectMapper.writeValueAsString(withErrors));
+        JsonNode jsonWithout = objectMapper.readTree(objectMapper.writeValueAsString(withoutErrors));
+
+        // then
+        assertThat(json.get("errors").get(0).get("field").asText()).isEqualTo("studentId");
+        assertThat(json.get("errors").get(0).get("message").asText()).isEqualTo("학번은 필수입니다.");
+        assertThat(jsonWithout.has("errors")).isFalse();
     }
 }

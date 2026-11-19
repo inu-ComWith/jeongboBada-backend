@@ -6,7 +6,9 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.ColumnDefault;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -36,14 +38,74 @@ public class User extends BaseEntity {
     @Column(name = "DEPARTMENT", length = 100)
     private String department;
 
+    // 비밀번호 찾기용 이메일. 회원가입 요청에서는 필수지만, DB 컬럼은 null 허용 —
+    // 이 기능 추가 전에 만들어진 행이 있는 DB(팀원 로컬 등)에서 ddl-auto: update가 컬럼을 못 추가하는 걸 막기 위함.
+    // unique는 null이 여러 개여도 통과한다. 항상 소문자/trim으로 정규화해서 저장한다.
+    // studentId처럼 응답 DTO 노출 금지 대상 (민감정보 취급)
+    @Column(name = "EMAIL", unique = true, length = 100)
+    private String email;
+
+    // 기본값 APPROVED는 이 컬럼이 생기기 전에 가입한 계정용이다. 서류 없이 PENDING이 되면 승인받을 방법이 없다.
+    // 새 가입은 create()에서 PENDING으로 넣는다 (docs/student-verification-architecture.md)
+    @Enumerated(EnumType.STRING)
+    @ColumnDefault("'APPROVED'")
+    @Column(name = "VERIFICATION_STATUS", nullable = false, length = 20)
+    private VerificationStatus verificationStatus;
+
+    // 재학 증빙 서류의 S3 key (URL 아님. 열람할 때 presigned URL을 만든다). 이 기능 전에 가입한 계정은 null
+    @Column(name = "VERIFICATION_DOCUMENT_KEY", length = 100)
+    private String verificationDocumentKey;
+
+    // 가입 신청(서류 제출) 시각. 반려 후 다시 제출하면 그 시각으로 바뀐다 (승인 대기 팝업의 신청일, 대기 목록 순서).
+    // 이 컬럼 전에 가입한 계정은 null이라 읽을 때 가입일로 대신한다 (getVerificationRequestedAt)
+    @Column(name = "VERIFICATION_REQUESTED_AT")
+    private LocalDateTime verificationRequestedAt;
+
+    // 관리자가 승인·반려한 시각 (상태로 승인일/반려일을 구분한다). 검토 없이 승인 상태인 기존 계정은 null
+    @Column(name = "VERIFICATION_PROCESSED_AT")
+    private LocalDateTime verificationProcessedAt;
+
+    // 반려 사유. 관리자가 비워 둘 수 있다 (#142)
+    @Column(name = "REJECTION_REASON", length = 200)
+    private String rejectionReason;
+
     @Builder(access = AccessLevel.PRIVATE)
-    private User(String studentId, String password, String nickname, UserRole userRole, String department) {
+    private User(String studentId, String password, String nickname, UserRole userRole, String department, String email,
+                 VerificationStatus verificationStatus, String verificationDocumentKey, LocalDateTime verificationRequestedAt) {
         this.studentId = studentId;
         this.password = password;
         this.nickname = nickname;
         this.userRole = userRole;
         this.department = department;
+        this.email = email;
+        this.verificationStatus = verificationStatus;
+        this.verificationDocumentKey = verificationDocumentKey;
+        this.verificationRequestedAt = verificationRequestedAt;
     }
+
+    // 비밀번호 찾기 / 이메일 변경 인증코드는 용도별로 컬럼을 분리한다.
+    // 하나를 공유하면 "이메일 변경용으로 받은 코드"로 비밀번호를 재설정하는 우회가 생기기 때문.
+    @Embedded
+    @AttributeOverrides({
+        @AttributeOverride(name = "codeHash", column = @Column(name = "PASSWORD_RESET_CODE_HASH", length = 100)),
+        @AttributeOverride(name = "issuedAt", column = @Column(name = "PASSWORD_RESET_CODE_ISSUED_AT")),
+        @AttributeOverride(name = "expiresAt", column = @Column(name = "PASSWORD_RESET_CODE_EXPIRES_AT")),
+        @AttributeOverride(name = "failedAttempts", column = @Column(name = "PASSWORD_RESET_CODE_FAILED_ATTEMPTS"))
+    })
+    private VerificationCode passwordResetCode;
+
+    @Embedded
+    @AttributeOverrides({
+        @AttributeOverride(name = "codeHash", column = @Column(name = "EMAIL_CHANGE_CODE_HASH", length = 100)),
+        @AttributeOverride(name = "issuedAt", column = @Column(name = "EMAIL_CHANGE_CODE_ISSUED_AT")),
+        @AttributeOverride(name = "expiresAt", column = @Column(name = "EMAIL_CHANGE_CODE_EXPIRES_AT")),
+        @AttributeOverride(name = "failedAttempts", column = @Column(name = "EMAIL_CHANGE_CODE_FAILED_ATTEMPTS"))
+    })
+    private VerificationCode emailChangeCode;
+
+    // 인증코드를 발송한 "새 이메일". 코드 검증을 통과해도 요청한 새 이메일과 같아야 변경된다.
+    @Column(name = "PENDING_EMAIL", length = 100)
+    private String pendingEmail;
 
     // 별도 테이블/Redis 없이 USERS 테이블에 직접 저장 (멀티 디바이스 로그인 요구사항 없음)
     // studentId처럼 응답 DTO 외 노출 금지 대상 (민감정보 취급)
@@ -52,6 +114,47 @@ public class User extends BaseEntity {
 
     @Column(name = "REFRESH_TOKEN_EXPIRES_AT")
     private LocalDateTime refreshTokenExpiresAt;
+
+    // 기본값은 이 컬럼이 생기기 전에 만들어진 행과 INSERT 문에 컬럼이 없는 경우를 위한 것
+    @ColumnDefault("0")
+    @Column(name = "LOGIN_FAILED_ATTEMPTS", nullable = false)
+    private int loginFailedAttempts;
+
+    @Column(name = "LOGIN_LOCKED_UNTIL")
+    private LocalDateTime loginLockedUntil;
+
+    // 기본값은 이 컬럼이 생기기 전에 만들어진 행과 INSERT 문에 컬럼이 없는 경우를 위한 것
+    @ColumnDefault("0")
+    @Column(name = "PASSWORD_RESET_SEND_COUNT", nullable = false)
+    private int passwordResetSendCount;
+
+    @Column(name = "PASSWORD_RESET_SEND_DATE")
+    private LocalDate passwordResetSendDate;
+
+    // 저장된 횟수가 다른 날짜의 것이면 오늘은 아직 보낸 적이 없다
+    public int passwordResetSendCountOn(LocalDate date) {
+        return date.equals(passwordResetSendDate) ? passwordResetSendCount : 0;
+    }
+
+    public void recordPasswordResetSend(LocalDate date, int sendCount) {
+        this.passwordResetSendDate = date;
+        this.passwordResetSendCount = sendCount;
+    }
+
+    public int recordLoginFailure() {
+        return ++loginFailedAttempts;
+    }
+
+    // 잠금이 풀린 뒤에는 다시 1회부터 센다
+    public void lockLogin(LocalDateTime until) {
+        this.loginFailedAttempts = 0;
+        this.loginLockedUntil = until;
+    }
+
+    public void clearLoginFailures() {
+        this.loginFailedAttempts = 0;
+        this.loginLockedUntil = null;
+    }
 
     // 로그인/재발급 시 새 refresh token으로 교체
     public void updateRefreshToken(String refreshToken, LocalDateTime expiresAt) {
@@ -65,13 +168,84 @@ public class User extends BaseEntity {
         this.refreshTokenExpiresAt = null;
     }
 
-    public static User create(String studentId, String encodedPassword, String nickname, String department) {
+    public void updateNickname(String nickname) {
+        this.nickname = nickname;
+    }
+
+    public void updatePassword(String encodedPassword) {
+        this.password = encodedPassword;
+    }
+
+    // null을 넘기면 코드를 폐기한다 (만료·한도 초과·사용 완료)
+    public void updatePasswordResetCode(VerificationCode code) {
+        this.passwordResetCode = code;
+    }
+
+    public void clearPasswordResetCode() {
+        this.passwordResetCode = null;
+    }
+
+    // 새 이메일로 인증코드를 발송할 때: 어떤 이메일로 보냈는지(pendingEmail)도 함께 기록
+    public void requestEmailChange(String pendingEmail, VerificationCode code) {
+        this.pendingEmail = pendingEmail;
+        this.emailChangeCode = code;
+    }
+
+    public void updateEmailChangeCode(VerificationCode code) {
+        this.emailChangeCode = code;
+    }
+
+    public void clearEmailChange() {
+        this.pendingEmail = null;
+        this.emailChangeCode = null;
+    }
+
+    // 이메일 변경 확정 — 사용한 코드와 대기 중이던 새 이메일은 함께 소모
+    public void changeEmail(String email) {
+        this.email = email;
+        clearEmailChange();
+    }
+
+    public LocalDateTime getVerificationRequestedAt() {
+        return verificationRequestedAt != null ? verificationRequestedAt : getCreatedAt();
+    }
+
+    // 반려 후 새 서류로 다시 신청. 이전 서류는 반려할 때 이미 지웠다
+    public void resubmitVerification(String documentKey, LocalDateTime now) {
+        this.verificationStatus = VerificationStatus.PENDING;
+        this.verificationDocumentKey = documentKey;
+        this.verificationRequestedAt = now;
+        this.verificationProcessedAt = null;
+        this.rejectionReason = null;
+    }
+
+    // 처리하면 서류는 바로 지운다(승인 후 삭제 안내). S3 삭제는 커밋 뒤에 서비스가 하고, 여기서는 key만 비운다
+    public void approveVerification(LocalDateTime now) {
+        this.verificationStatus = VerificationStatus.APPROVED;
+        this.verificationProcessedAt = now;
+        this.rejectionReason = null;
+        this.verificationDocumentKey = null;
+    }
+
+    public void rejectVerification(LocalDateTime now, String reason) {
+        this.verificationStatus = VerificationStatus.REJECTED;
+        this.verificationProcessedAt = now;
+        this.rejectionReason = reason;
+        this.verificationDocumentKey = null;
+    }
+
+    public static User create(String studentId, String encodedPassword, String nickname, String department, String email,
+                              String verificationDocumentKey) {
         return User.builder()
             .studentId(studentId)
             .password(encodedPassword)
             .nickname(nickname)
             .userRole(UserRole.USER)
             .department(department)
+            .email(email)
+            .verificationStatus(VerificationStatus.PENDING)
+            .verificationDocumentKey(verificationDocumentKey)
+            .verificationRequestedAt(LocalDateTime.now())
             .build();
     }
 }

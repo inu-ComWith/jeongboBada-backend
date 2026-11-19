@@ -1,9 +1,14 @@
 package com.inu.jeongbobada.domain.user.dto;
 
+import com.inu.jeongbobada.domain.user.validation.BcryptLength;
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import org.springframework.web.multipart.MultipartFile;
 
+// 가입 폼(multipart/form-data). 가입 정보와 재학 증빙 서류를 한 요청으로 받는다 (#142)
 public record SignupRequest(
     @NotBlank(message = "학번은 필수입니다.")
     @Pattern(
@@ -14,6 +19,7 @@ public record SignupRequest(
 
     @NotBlank(message = "비밀번호는 필수입니다.")
     @Size(min = 8, max = 64, message = "비밀번호는 8자 이상 64자 이하여야 합니다.")
+    @BcryptLength
     @Pattern(
             regexp = "^(?=.*[A-Za-z])(?=.*\\d).+$",
             message = "비밀번호는 영문과 숫자를 각각 최소 1개 포함해야 합니다."
@@ -21,11 +27,21 @@ public record SignupRequest(
     String password,
 
     @NotBlank(message = "닉네임은 필수입니다.")
-    @Size(min = 2, max = 10, message = "닉네임은 2자 이상 10자 이하여야 합니다.")
+    @Size(min = 2, max = 6, message = "닉네임은 2자 이상 6자 이하여야 합니다.")
     @Pattern(
-        regexp = "^[가-힣a-zA-Z0-9_-]+$",
-        message = "닉네임은 한글, 영문, 숫자, '_', '-'만 사용할 수 있습니다."
+        regexp = "^[가-힣a-zA-Z0-9]+$",
+        message = "닉네임은 한글, 영문, 숫자만 사용할 수 있습니다."
     )
-    String nickname
+    String nickname,
+
+    // 비밀번호 찾기용. 재설정 때 즉석으로 받으면 타인 계정을 탈취할 수 있어서 가입 때 미리 받아둔다.
+    @NotBlank(message = "이메일은 필수입니다.")
+    @Size(max = 100, message = "이메일은 100자 이하여야 합니다.")
+    @Email(regexp = "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", message = "올바른 이메일 형식이 아닙니다.")
+    String email,
+
+    // 재학 증빙 서류. 비어 있을 때 기본 400 대신 FILE_EMPTY로 안내하도록 여기서는 검사하지 않고 FileStorage가 검사한다
+    @Schema(description = "재학 증빙 서류 (pdf·jpg, 최대 10MB, 1개)", type = "string", format = "binary")
+    MultipartFile file
 ) {
 }

@@ -1,8 +1,8 @@
 ---
-name: 📄 문서 작업
+name: 📝 문서 작업
 about: 문서 작성·정리·정합성 수정
-title: "docs: "
-labels: documentation
+title: "📝 docs: "
+labels: "📝 documentation"
 assignees: ''
 ---
 

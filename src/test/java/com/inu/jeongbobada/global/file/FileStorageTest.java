@@ -1,0 +1,220 @@
+package com.inu.jeongbobada.global.file;
+
+import com.inu.jeongbobada.global.exception.BusinessException;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.util.unit.DataSize;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+
+import java.time.Duration;
+import java.util.Set;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+// S3 없이 검증 규칙과 S3 호출 내용을 확인한다. 실제 버킷 확인은 S3RealBucketTest.
+// presign은 네트워크 없이 서명만 계산하므로, 가짜 키를 넣은 진짜 S3Presigner로 확인한다.
+class FileStorageTest {
+
+    private static final Set<FileType> PDF_JPG = Set.of(FileType.PDF, FileType.JPG);
+    private static final DataSize TEN_MB = DataSize.ofMegabytes(10);
+    private static final byte[] PDF = "%PDF-1.7 test".getBytes();
+    private static final byte[] JPG = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 0, 0x10};
+
+    private S3Client s3Client;
+    private S3Presigner s3Presigner;
+    private FileStorage fileStorage;
+
+    @BeforeEach
+    void setUp() {
+        s3Client = mock(S3Client.class);
+        s3Presigner = S3Presigner.builder()
+            .region(Region.US_EAST_1)
+            .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("test-key", "test-secret")))
+            .build();
+        fileStorage = new FileStorage(s3Client, s3Presigner,
+            new AwsProperties("us-east-1", new AwsProperties.S3("test-bucket", null)));
+    }
+
+    @AfterEach
+    void tearDown() {
+        s3Presigner.close();
+    }
+
+    @Test
+    void pdf를_올리면_prefix와_UUID로_된_key를_돌려준다() {
+        String key = fileStorage.upload("verification", file("재학증명서.pdf", "application/pdf", PDF), PDF_JPG, TEN_MB);
+
+        assertThat(key).matches("verification/[0-9a-f-]{36}\\.pdf");
+        ArgumentCaptor<PutObjectRequest> request = ArgumentCaptor.forClass(PutObjectRequest.class);
+        verify(s3Client).putObject(request.capture(), any(RequestBody.class));
+        assertThat(request.getValue().bucket()).isEqualTo("test-bucket");
+        assertThat(request.getValue().key()).isEqualTo(key);
+        assertThat(request.getValue().contentType()).isEqualTo("application/pdf");
+    }
+
+    @Test
+    void jpeg_확장자도_jpg로_저장한다() {
+        String key = fileStorage.upload("verification", file("학생증.JPEG", "image/jpeg", JPG), PDF_JPG, TEN_MB);
+
+        assertThat(key).endsWith(".jpg");
+    }
+
+    @Test
+    void 빈_파일은_FILE_EMPTY() {
+        assertError(() -> fileStorage.upload("verification", file("a.pdf", "application/pdf", new byte[0]), PDF_JPG, TEN_MB),
+            FileErrorCode.FILE_EMPTY);
+        assertError(() -> fileStorage.upload("verification", null, PDF_JPG, TEN_MB), FileErrorCode.FILE_EMPTY);
+    }
+
+    @Test
+    void 호출하는_쪽의_최대_크기를_넘으면_FILE_TOO_LARGE() {
+        assertThatThrownBy(() -> fileStorage.upload("verification",
+                file("a.pdf", "application/pdf", PDF), PDF_JPG, DataSize.ofBytes(PDF.length - 1)))
+            .isInstanceOfSatisfying(BusinessException.class,
+                e -> assertThat(e.getErrorCode()).isEqualTo(FileErrorCode.FILE_TOO_LARGE));
+        verifyNoInteractions(s3Client);
+    }
+
+    @Test
+    void 허용하지_않은_형식이면_허용_형식을_알려준다() {
+        assertThatThrownBy(() -> fileStorage.upload("verification", file("학생증.heic", "image/heic", JPG), PDF_JPG, TEN_MB))
+            .isInstanceOfSatisfying(BusinessException.class, e -> {
+                assertThat(e.getErrorCode()).isEqualTo(FileErrorCode.FILE_TYPE_NOT_ALLOWED);
+                assertThat(e.getMessage()).isEqualTo("pdf, jpg 파일만 올릴 수 있어요");
+            });
+        verifyNoInteractions(s3Client);
+    }
+
+    @Test
+    void 허용_목록에_없는_형식은_확장자가_맞아도_거절한다() {
+        assertError(() -> fileStorage.upload("verification", file("a.jpg", "image/jpeg", JPG), Set.of(FileType.PDF), TEN_MB),
+            FileErrorCode.FILE_TYPE_NOT_ALLOWED);
+    }
+
+    @Test
+    void 확장자만_바꾼_파일은_거절한다() {
+        // 내용은 jpg인데 이름과 Content-Type만 pdf
+        assertError(() -> fileStorage.upload("verification", file("위조.pdf", "application/pdf", JPG), PDF_JPG, TEN_MB),
+            FileErrorCode.FILE_TYPE_NOT_ALLOWED);
+    }
+
+    @Test
+    void Content_Type이_확장자와_다르면_거절한다() {
+        assertError(() -> fileStorage.upload("verification", file("a.pdf", "text/plain", PDF), PDF_JPG, TEN_MB),
+            FileErrorCode.FILE_TYPE_NOT_ALLOWED);
+    }
+
+    @Test
+    void 확장자가_없으면_거절한다() {
+        assertError(() -> fileStorage.upload("verification", file("document", "application/pdf", PDF), PDF_JPG, TEN_MB),
+            FileErrorCode.FILE_TYPE_NOT_ALLOWED);
+    }
+
+    @Test
+    void S3_호출이_실패하면_FILE_UPLOAD_FAILED() {
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+            .thenThrow(S3Exception.builder().message("Access Denied").statusCode(403).build());
+
+        assertThatThrownBy(() -> fileStorage.upload("verification", file("a.pdf", "application/pdf", PDF), PDF_JPG, TEN_MB))
+            .isInstanceOfSatisfying(BusinessException.class,
+                e -> assertThat(e.getErrorCode()).isEqualTo(FileErrorCode.FILE_UPLOAD_FAILED));
+    }
+
+    @Test
+    void 삭제는_같은_버킷의_key로_요청한다() {
+        fileStorage.delete("verification/abc.pdf");
+
+        ArgumentCaptor<DeleteObjectRequest> request = ArgumentCaptor.forClass(DeleteObjectRequest.class);
+        verify(s3Client).deleteObject(request.capture());
+        assertThat(request.getValue().bucket()).isEqualTo("test-bucket");
+        assertThat(request.getValue().key()).isEqualTo("verification/abc.pdf");
+    }
+
+    @Test
+    void presigned_URL은_key와_만료_시간을_담는다() {
+        String url = fileStorage.presignedGetUrl("verification/abc.pdf", Duration.ofMinutes(10));
+
+        assertThat(url)
+            .contains("test-bucket")
+            .contains("verification/abc.pdf")
+            .contains("X-Amz-Expires=600");
+    }
+
+    // 학습자료 형식 (#187). 오피스·한글은 브라우저가 application/octet-stream으로 보내는 경우가 많아 함께 받는다
+    private static final Set<FileType> MATERIAL_TYPES =
+        Set.of(FileType.PDF, FileType.JPG, FileType.PNG, FileType.PPTX, FileType.DOCX, FileType.XLSX, FileType.HWP);
+    private static final byte[] PNG = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A};
+    private static final byte[] ZIP = {'P', 'K', 0x03, 0x04, 0x14, 0x00};
+    private static final byte[] HWP = {(byte) 0xD0, (byte) 0xCF, 0x11, (byte) 0xE0, (byte) 0xA1, (byte) 0xB1, 0x1A, (byte) 0xE1, 0};
+
+    @Test
+    void 학습자료_형식은_png_오피스_한글을_받는다() {
+        assertThat(fileStorage.upload("material", file("필기.png", "image/png", PNG), MATERIAL_TYPES, TEN_MB)).endsWith(".png");
+        assertThat(fileStorage.upload("material", file("발표.pptx",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation", ZIP), MATERIAL_TYPES, TEN_MB)).endsWith(".pptx");
+        assertThat(fileStorage.upload("material", file("정리.docx", "application/octet-stream", ZIP), MATERIAL_TYPES, TEN_MB)).endsWith(".docx");
+        assertThat(fileStorage.upload("material", file("표.xlsx", "application/octet-stream", ZIP), MATERIAL_TYPES, TEN_MB)).endsWith(".xlsx");
+        assertThat(fileStorage.upload("material", file("과제.hwp", "application/x-hwp", HWP), MATERIAL_TYPES, TEN_MB)).endsWith(".hwp");
+        assertThat(fileStorage.upload("material", file("과제2.hwp", "application/octet-stream", HWP), MATERIAL_TYPES, TEN_MB)).endsWith(".hwp");
+    }
+
+    @Test
+    void 저장할_때는_형식의_대표_Content_Type을_붙인다() {
+        fileStorage.upload("material", file("정리.docx", "application/octet-stream", ZIP), MATERIAL_TYPES, TEN_MB);
+
+        ArgumentCaptor<PutObjectRequest> request = ArgumentCaptor.forClass(PutObjectRequest.class);
+        verify(s3Client).putObject(request.capture(), any(RequestBody.class));
+        assertThat(request.getValue().contentType())
+            .isEqualTo("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    }
+
+    @Test
+    void 내용이_다른_오피스_한글_파일은_거절한다() {
+        // 확장자만 hwp인 pdf, 확장자만 docx인 한글 문서
+        assertError(() -> fileStorage.upload("material", file("가짜.hwp", "application/octet-stream", PDF), MATERIAL_TYPES, TEN_MB),
+            FileErrorCode.FILE_TYPE_NOT_ALLOWED);
+        assertError(() -> fileStorage.upload("material", file("가짜.docx", "application/octet-stream", HWP), MATERIAL_TYPES, TEN_MB),
+            FileErrorCode.FILE_TYPE_NOT_ALLOWED);
+    }
+
+    @Test
+    void pdf_이미지는_octet_stream을_받지_않는다() {
+        assertError(() -> fileStorage.upload("material", file("a.pdf", "application/octet-stream", PDF), MATERIAL_TYPES, TEN_MB),
+            FileErrorCode.FILE_TYPE_NOT_ALLOWED);
+    }
+
+    @Test
+    void 내려받기_주소에는_원래_파일명을_한글도_깨지지_않게_넣는다() {
+        String url = fileStorage.presignedDownloadUrl("material/abc.pdf", Duration.ofMinutes(5), "자료 정리.pdf");
+
+        assertThat(url).contains("response-content-disposition=")
+            .contains("filename%2A%3DUTF-8%27%27%25EC%259E%2590%25EB%25A3%258C%2520%25EC%25A0%2595%25EB%25A6%25AC.pdf");
+    }
+
+    private static MockMultipartFile file(String name, String contentType, byte[] content) {
+        return new MockMultipartFile("file", name, contentType, content);
+    }
+
+    private void assertError(Runnable upload, FileErrorCode expected) {
+        assertThatThrownBy(upload::run)
+            .isInstanceOfSatisfying(BusinessException.class, e -> assertThat(e.getErrorCode()).isEqualTo(expected));
+        verifyNoInteractions(s3Client);
+    }
+}

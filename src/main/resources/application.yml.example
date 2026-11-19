@@ -5,10 +5,30 @@ spring:
   application:
     name: jeongbobada
   datasource:
-    # docker-compose.yml로 띄운 MySQL 기본값. docker-compose.yml의 환경변수를 바꿨다면 여기도 맞춰야 한다.
-    url: jdbc:mysql://localhost:3306/jeongbobada
+    # docker-compose.yml로 띄운 PostgreSQL 기본값. docker-compose.yml의 환경변수를 바꿨다면 여기도 맞춰야 한다.
+    url: jdbc:postgresql://localhost:5432/jeongbobada
     username:
     password:
+  # 비밀번호 찾기 / 이메일 변경 인증코드 발송용 SMTP. username/password를 비워두면 앱은 뜨지만 메일 발송만 실패한다.
+  # Gmail을 쓴다면 password에는 계정 비밀번호가 아니라 "앱 비밀번호"(2단계 인증 켠 뒤 발급)를 넣어야 한다.
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username:
+    password:
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+  # 파일 업로드 크기 한도(서버 전체). Spring 기본값이 1MB라 반드시 올려야 한다. 가장 큰 학습자료(20MB, #187)에 맞추고,
+  # API별 한도(가입 서류 10MB 등)는 FileStorage가 따로 검사한다.
+  # request는 파일 + 나머지 폼 필드라 조금 더 크게 둔다
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 21MB
   jpa:
     hibernate:
       # update: 엔티티 변경사항을 기동 시 테이블에 자동 반영 (개발 편의용, 운영에서는 지양)
@@ -17,7 +37,7 @@ spring:
     defer-datasource-initialization: true
   sql:
     init:
-      # MySQL 같은 외부 DB는 기본적으로 data.sql을 자동 실행하지 않아서 always로 강제 실행
+      # PostgreSQL 같은 외부 DB는 기본적으로 data.sql을 자동 실행하지 않아서 always로 강제 실행
       mode: always
       # data.sql을 읽을 때 OS 기본 인코딩(Windows는 보통 CP949/MS949)에 의존하지 않도록 명시.
       # 이거 없으면 맥에서는 정상, 윈도우에서는 한글이 깨진 채로 DB에 들어갈 수 있음.
@@ -29,6 +49,26 @@ jwt:
   secret:
   expiration: 3600000 # 1시간 (ms 단위)
   refresh-expiration: 1209600000 # 14일 (ms 단위)
+
+# 브라우저에서 API를 호출할 수 있게 허용하는 프론트 origin 목록. 비밀값이 아니므로 예시를 그대로 채워둔다.
+# 프론트 배포 도메인이 바뀌면 이 값(또는 docker-compose.yml/.env의 CORS_ALLOWED_ORIGINS)을 갱신한다.
+cors:
+  allowed-origins:
+    - http://localhost:5173
+    - https://jeongbo-bada-frontend.vercel.app
+  allowed-origin-patterns:
+    - https://*.vercel.app # Vercel 프리뷰 배포(브랜치마다 URL이 다름)까지 허용
+
+# 파일 업로드(S3). 비밀값이 아니므로 예시를 채워둔다. 버킷은 각자 쓰는 버킷 이름으로 바꾼다.
+# access key·secret은 여기 넣지 않는다. 환경변수 AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
+# AWS_SESSION_TOKEN(Learner Lab 임시 키) 또는 ~/.aws/credentials로 넣으면 SDK가 찾는다. 없어도 서버는 뜨고 업로드만 실패한다.
+aws:
+  region: us-east-1
+  s3:
+    bucket: jeongbobada-dev
+    # S3 호환 저장소 주소. Supabase Storage면 https://<project_ref>.storage.supabase.co/storage/v1/s3 를 넣고
+    # region을 Supabase 프로젝트 리전으로 바꾼다. AWS S3(Learner Lab 등)를 쓰면 비워둔다 (#175)
+    endpoint:
 
 springdoc:
   swagger-ui:

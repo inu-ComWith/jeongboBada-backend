@@ -1,0 +1,38 @@
+name: AI 서명 검사
+
+# PR의 커밋 메시지와 제목·본문에 AI 도구 서명("Co-Authored-By: Claude", "Generated with Claude Code" 등)이
+# 있으면 실패한다 (AGENTS.md "AI 서명 금지"). 본문을 고치면 다시 검사하도록 edited도 받는다.
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: no-ai-attribution-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: AI 서명 검사
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # 제목·본문은 env로 넘긴다. run에 ${{ }}로 바로 넣으면 본문 내용이 셸 명령으로 실행될 수 있다.
+      - name: 커밋 메시지·PR 제목·본문 검사
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          {
+            git log --format=%B "$BASE_SHA..$HEAD_SHA"
+            printf '%s\n' "$PR_TITLE"
+            printf '%s\n' "$PR_BODY"
+          } | bash scripts/ci/check-no-ai-attribution.sh

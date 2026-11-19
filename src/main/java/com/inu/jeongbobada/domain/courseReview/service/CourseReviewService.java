@@ -1,13 +1,15 @@
 package com.inu.jeongbobada.domain.courseReview.service;
 
 import com.inu.jeongbobada.domain.courseReview.dto.request.ReviewCreateReqDto;
+import com.inu.jeongbobada.domain.courseReview.dto.request.ReviewUpdateReqDto;
 import com.inu.jeongbobada.domain.courseReview.dto.response.ReviewResDto;
 import com.inu.jeongbobada.domain.course.entity.Course;
-import com.inu.jeongbobada.domain.course.exception.CourseException;
+import com.inu.jeongbobada.domain.course.exception.CourseErrorCode;
 import com.inu.jeongbobada.domain.course.repository.CourseOfferingRepository;
 import com.inu.jeongbobada.domain.course.repository.CourseRepository;
 import com.inu.jeongbobada.domain.courseReview.entity.CourseReview;
 import com.inu.jeongbobada.domain.courseReview.enums.ReviewSort;
+import com.inu.jeongbobada.domain.courseReview.exception.CourseReviewErrorCode;
 import com.inu.jeongbobada.domain.courseReview.repository.CourseReviewRepository;
 import com.inu.jeongbobada.domain.professor.entity.Professor;
 import com.inu.jeongbobada.domain.professor.exception.ProfessorErrorCode;
@@ -16,6 +18,7 @@ import com.inu.jeongbobada.domain.user.entity.User;
 import com.inu.jeongbobada.domain.user.exception.UserErrorCode;
 import com.inu.jeongbobada.domain.user.repository.UserRepository;
 import com.inu.jeongbobada.global.exception.BusinessException;
+import com.inu.jeongbobada.global.exception.code.GlobalErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,14 +41,22 @@ public class CourseReviewService {
 
         //  후기를 작성할 과목이 존재하는지 확인
         Course course = courseRepository.findById(courseId)
-            .orElseThrow(() -> new BusinessException(CourseException.COURSE_NOT_FOUND));
+            .orElseThrow(() -> new BusinessException(CourseErrorCode.COURSE_NOT_FOUND));
 
         Professor professor = professorRepository.findById(request.professorId())
             .orElseThrow(() -> new BusinessException(ProfessorErrorCode.PROFESSOR_NOT_FOUND));
 
         // 이 교수가 실제로 이 과목을 개설한 적 있는지 확인 (엉뚱한 과목-교수 조합으로 후기가 달리는 것 방지)
-        courseOfferingRepository.findByCourse_CourseIdAndProfessor_ProfessorId(courseId, professor.getProfessorId())
-            .orElseThrow(() -> new BusinessException(CourseException.COURSE_OFFERING_NOT_FOUND));
+        if (!courseOfferingRepository.existsByCourse_CourseIdAndProfessor_ProfessorId(courseId, professor.getProfessorId())) {
+            throw new BusinessException(CourseErrorCode.COURSE_OFFERING_NOT_FOUND);
+        }
+
+        // 같은 사람이 같은 강의(과목+교수)에 두 번 쓰는 것 방지. 확인과 저장 사이 동시 요청은
+        // DB UNIQUE에 걸려 전역 핸들러가 409 DUPLICATE_RESOURCE로 응답한다 (#118)
+        if (courseReviewRepository.existsByUser_UserIdAndCourse_CourseIdAndProfessor_ProfessorId(
+            userId, courseId, professor.getProfessorId())) {
+            throw new BusinessException(CourseReviewErrorCode.DUPLICATE_COURSE_REVIEW);
+        }
 
         CourseReview review = new CourseReview(
             user,
@@ -70,11 +81,53 @@ public class CourseReviewService {
         return "과목 후기가 등록되었습니다.";
     }
 
+    @Transactional
+    public String deleteReview(Long userId, Long courseId, Long reviewId) {
+        CourseReview review = courseReviewRepository
+            .findByReviewIdAndCourse_CourseId(reviewId, courseId)
+            .orElseThrow(() -> new BusinessException(CourseReviewErrorCode.COURSE_REVIEW_NOT_FOUND));
+
+        if (!review.getUser().getUserId().equals(userId)) {
+            throw new BusinessException(GlobalErrorCode.FORBIDDEN);
+        }
+
+        courseReviewRepository.delete(review);
+        return "과목 후기가 삭제되었습니다.";
+    }
+
+    @Transactional
+    public String updateReview(Long userId, Long courseId, Long reviewId, ReviewUpdateReqDto request) {
+        CourseReview review = courseReviewRepository
+            .findByReviewIdAndCourse_CourseId(reviewId, courseId)
+            .orElseThrow(() -> new BusinessException(CourseReviewErrorCode.COURSE_REVIEW_NOT_FOUND));
+
+        if (!review.getUser().getUserId().equals(userId)) {
+            throw new BusinessException(GlobalErrorCode.FORBIDDEN);
+        }
+
+        review.update(
+            request.rating(),
+            request.content(),
+            request.textbook(),
+            request.assignmentDifficulty(),
+            request.assignmentAmount(),
+            request.groupActivity(),
+            request.attendance(),
+            request.examCount(),
+            request.quizDifficulty(),
+            request.examDifficulty(),
+            request.quizCount(),
+            request.gradingType()
+        );
+
+        return "과목 후기가 수정되었습니다.";
+    }
+
     @Transactional(readOnly = true)
     public List<ReviewResDto> getReviews(Long courseId, ReviewSort sort) {
         // 없는 과목은 404 예외처리  존재하지만 후기가 없는 과목은 빈 목록을 반환
         if (!courseRepository.existsById(courseId)) {
-            throw new BusinessException(CourseException.COURSE_NOT_FOUND);
+            throw new BusinessException(CourseErrorCode.COURSE_NOT_FOUND);
         }
 
         // 별점순 최신순 날짜순 으로 조회
@@ -97,4 +150,7 @@ public class CourseReviewService {
             ))
             .toList();
     }
+
+
+
 }

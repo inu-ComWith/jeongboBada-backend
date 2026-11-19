@@ -1,6 +1,6 @@
 # 인증(JWT) 아키텍처
 
-CLAUDE.md 개발 우선순위 1번(인증) 착수 전, 구조를 먼저 문서로 정리한다. 실제 구현은 이 문서를 기준으로 진행한다.
+AGENTS.md 개발 우선순위 1번(인증) 착수 전, 구조를 먼저 문서로 정리한다. 실제 구현은 이 문서를 기준으로 진행한다.
 
 ## 배경
 
@@ -15,12 +15,37 @@ Spring Security 필터 체인 구조상 거의 정형화된 패턴을 따른다.
 | 클래스 | 역할 |
 |---|---|
 | `SecurityConfig` | `SecurityFilterChain` 빈. `JwtAuthenticationFilter`/`JwtAuthenticationEntryPoint` 등록 완료. 단, `PERMIT_ALL_PATHS` 외엔 아직 `anyRequest().permitAll()`이라 실제로 `authenticated()`로 막힌 경로는 없음 (아래 "실제 경로 제한은 누가 하나" 참고) |
-| `JwtTokenProvider` | 토큰 발급/파싱/검증 (`jjwt` 사용). `createAccessToken`/`createRefreshToken`/`validateToken`/`getStudentId` 구현 완료 |
-| `JwtAuthenticationFilter` | 구현 완료. 매 요청의 `Authorization` 헤더에서 토큰 추출·검증 후 `SecurityContext`에 `CustomUserDetails` 저장 |
+| `JwtTokenProvider` | 토큰 발급/파싱/검증 (`jjwt` 사용). `createAccessToken`/`createRefreshToken`/`resolveStudentId`/`resolveAccessTokenStudentId` 구현 완료. 토큰에 `type` claim(`access`/`refresh`)을 넣어 구분한다. `resolveStudentId`는 서명·만료만, `resolveAccessTokenStudentId`는 종류까지 확인한다. 검증과 학번 추출을 한 번의 파싱으로 처리해서, 유효하지 않으면 예외 대신 빈 `Optional`을 돌려준다 |
+| `JwtAuthenticationFilter` | 구현 완료. 매 요청의 `Authorization` 헤더에서 토큰 추출 후 `resolveAccessTokenStudentId`로 검증하고 `SecurityContext`에 `CustomUserDetails` 저장. refresh token은 DB 대조 없이 통과하면 로그아웃 뒤에도 쓸 수 있어서 인증하지 않는다 |
 | `CustomUserDetails` | 구현 완료. `UserDetails` 구현체, `userId`/`nickname` 등 도메인 정보 보유 |
 | `StudentUserDetailsService` | (당초 `CustomUserDetailsService`로 계획했으나 실제 클래스명은 이것) `student_id`로 DB에서 `User` 조회 후 `CustomUserDetails`로 변환. 구현 완료 |
-| `JwtAuthenticationEntryPoint` | 구현 완료. 인증 실패 시 로그인 페이지 리다이렉트 대신 401 JSON 응답 (`GlobalErrorCode.UNAUTHORIZED`) |
+| `JwtAuthenticationEntryPoint` | 구현 완료. 인증 실패 시 로그인 페이지 리다이렉트 대신 401 JSON 응답 (`GlobalErrorCode.AUTHENTICATION_REQUIRED`) |
 | `AuthController` (user 도메인) | `/api/auth/signup`, `/api/auth/login`, `/api/auth/reissue`, `/api/auth/logout` 구현 완료 |
+
+## API 동작 규칙 (헷갈리기 쉬운 것 정리)
+
+나중에 "이거 어떻게 동작하기로 했더라?" 싶을 때 코드 안 뒤지고 여기부터 볼 것.
+
+| API | 로그인 필요? | 규칙 |
+|---|---|---|
+| `POST /api/auth/signup` | X | 학번/닉네임/이메일 중복 검사 후 BCrypt로 암호화해 저장. 검사와 저장 사이에 같은 값으로 동시 가입(더블클릭 등)이 끼어들면 DB UNIQUE 제약에 걸리고, `GlobalExceptionHandler`가 409(`DUPLICATE_RESOURCE`)로 응답 — 이때는 어느 필드가 겹쳤는지 구분하지 않음 (#109, `ConcurrentSignupIntegrationTest`). **이메일 필수**(비밀번호 찾기용, 대소문자·공백 무시하고 정규화해 저장). **닉네임은 2~6자, 한글·영문·숫자만**(와이어프레임 기준). 새 비밀번호는 `@BcryptLength`로 72바이트 이하만 받는다(가입·변경·재설정). BCrypt가 72바이트를 넘으면 예외를 던져 500이 되기 때문 |
+| `POST /api/auth/login` | X | 학번+비밀번호를 `AuthenticationManager`에 위임해 검증. **와이어프레임 확정으로 미가입 학번(404 `STUDENT_ID_NOT_REGISTERED`)과 비밀번호 틀림(401 `INVALID_CREDENTIALS`, `message`에 n/5회)을 구분한다** (2026-11-03 결정, 회원가입도 이미 가입된 학번을 알려주므로 가입 여부를 숨기는 효과가 크지 않음). 5회 틀리면 5분 잠금(429 `LOGIN_LOCKED`, 남은 초는 `Retry-After` 헤더, 와이어프레임의 10분이 길어서 2026-11-03 변경, 화면 문구 수정 필요)이고, 잠금 중에는 올바른 비밀번호도 거부한다. 성공하면 횟수 초기화. 실패 횟수는 예외가 나도 커밋되도록 `noRollbackFor`, 동시 요청에서도 정확하도록 행 잠금(`findByStudentIdForUpdate`)을 쓴다 (`LoginIntegrationTest`) |
+| `POST /api/auth/reissue` | X (refresh token 자체가 인증 수단) | refresh token 서명·만료 검증 + **DB에 저장된 값과 문자열 일치**해야 통과 (탈취된 구 토큰 재사용 방지). 통과 시 access/refresh 둘 다 새로 발급(회전) |
+| `POST /api/auth/logout` | X (body의 refresh token 또는 헤더의 access token으로 사용자 특정) | DB에 저장된 refresh token을 삭제만 함 — access token 자체를 서버가 강제로 만료시키는 건 아니라서, 이미 발급된 access token은 만료 시각까지는 계속 유효. **body `refreshToken` 권장**: access가 만료돼도 로그아웃된다. 헤더만 보내는 예전 방식은 access가 만료되면 아무것도 못 지우고, 헤더의 refresh token은 무시한다(#129). DB 저장값과 같은 refresh일 때만 지운다 — 교체된 예전 refresh로 다른 기기의 현재 로그인을 끊지 않기 위해. 둘 다 없으면 400 |
+| `GET /api/users/me` | O | 본인 정보(`nickname`, `studentId`, `email`, `department`) 조회. 학번·이메일이 들어 있어 **본인 조회 전용 DTO(`MyInfoResponse`)** 로 분리 — 다른 사용자에게 보이는 응답에서 재사용 금지. 경로는 `/api/users/me/**` 규칙에 포함돼 토큰 없으면 401 |
+| `PATCH /api/users/me/nickname` | O | 닉네임 `unique` 제약 때문에 중복 검사하되, **본인 소유 닉네임이면 중복 에러 안 냄**(자기 자신으로의 "변경"은 통과). 형식은 가입과 같은 2~6자, 한글·영문·숫자. 이 규칙 전에 만든 긴 닉네임은 그대로 유지되고, 바꿀 때만 새 규칙을 적용한다 |
+| `PATCH /api/users/me/password` | O | **현재 비밀번호(`currentPassword`) 확인 필수** — 세션(access token) 탈취 상태에서 공격자가 비밀번호만 바꿔버리는 것 방지. 현재 비밀번호가 틀리면 **400**(`CURRENT_PASSWORD_MISMATCH`) — 401이면 프론트 인터셉터가 토큰 재발급으로 오인함(#115). 성공 시 **기존 refresh token 무효화**(`clearRefreshToken()`) → 다른 기기/세션은 재로그인 필요 |
+| `POST /api/auth/password-reset/send-code` | X | 학번+이메일이 **가입 때 등록한 것과 일치할 때만** 6자리 코드를 메일로 발송. **와이어프레임 확정으로 불일치를 구분한다**(404 `PASSWORD_RESET_ACCOUNT_NOT_FOUND`, 2026-11-03 결정). 60초 쿨다운은 429 `VERIFICATION_CODE_RESEND_TOO_FAST`, 재발송은 첫 발송을 빼고 하루 5회(한국 시간 기준, 초과 시 429 `PASSWORD_RESET_RESEND_LIMIT_EXCEEDED`)이고 응답의 `resendCount`로 n/5회를 표시한다. 발송 실패는 503 `EMAIL_SEND_FAILED`로 롤백되어 코드와 횟수가 남지 않는다. 횟수를 정확히 세려고 행 잠금(`findByStudentIdForUpdate`)을 쓴다 |
+| `POST /api/auth/password-reset/verify-code` | X | 코드가 맞는지만 확인하고 **코드는 소모하지 않음**(화면 단계 이동 판단용). **와이어프레임 화면에 맞춰 실패 사유를 구분한다**: 불일치 `PASSWORD_RESET_CODE_MISMATCH`(n/5회), 5번째 불일치 `PASSWORD_RESET_CODE_ATTEMPTS_EXCEEDED`, 만료 `PASSWORD_RESET_CODE_EXPIRED`, 없음/없는 학번 `INVALID_VERIFICATION_CODE` (모두 400). 횟수를 정확히 세려고 행 잠금(`findByStudentIdForUpdate`)을 쓴다 |
+| `POST /api/auth/password-reset` | X | 학번+코드+새 비밀번호. **서버는 verify-code 통과를 기억하지 않으므로 코드를 다시 검증**하고, 성공하면 코드를 폐기(1회용). 성공 시 `clearRefreshToken()`으로 기존 로그인 무효화, `clearLoginFailures()`로 로그인 잠금 해제. 지금 비밀번호와 같으면 400 `PASSWORD_RESET_SAME_PASSWORD`이고 코드는 소모하지 않음 |
+| `POST /api/users/me/email/send-code` | O | **새 이메일**로 인증코드 발송. 현재 이메일과 동일 400 / 이미 사용 중 409 / 쿨다운 중 429 / 발송 실패 503 (로그인한 본인 대상이라 사유를 그대로 알려줌) |
+| `PATCH /api/users/me/email` | O | `newEmail`+`code`+`currentPassword`. **현재 비밀번호 확인 필수**, 코드를 받은 이메일과 다른 주소로는 변경 불가. 이메일이 없는 기존 가입자도 같은 API로 처음 등록 |
+| 관리자 전용 API (아직 없음) | O + `ROLE_ADMIN` | `@PreAuthorize("hasRole('ADMIN')")` 사용. 권한 부족이면 403(`JwtAccessDeniedHandler`), 미인증이면 401(`JwtAuthenticationEntryPoint`) — 이 둘은 이미 배선 완료 |
+
+**민감정보 취급 원칙**
+- `studentId`(학번)는 로그인 식별자 전용 — 공개 응답 DTO에는 절대 노출하지 않고 `nickname`만 노출
+- `refreshToken`은 DB에 평문 저장 중(해시 전환은 [8번 섹션](#8-남은-갭-우선순위-낮음) 참고)이라 `studentId`와 동일하게 응답 DTO 노출 금지 대상으로 취급
+- `email`도 `studentId`와 동일하게 응답 DTO 노출 금지 대상. 인증코드는 원문을 저장하지 않고 BCrypt 해시만 저장하며 로그에도 남기지 않음
 
 ## 시크릿 키 관리
 
@@ -87,6 +112,11 @@ Figma 화면 기준으로 "로그인 없이 보이는 화면(첫 페이지 등)"
       추출·검증 후 `SecurityContext`에 위 커스텀 `UserDetails` 채움
 - [x] `JwtAuthenticationEntryPoint` — 인증 안 된 요청에 401 JSON 응답
 - [x] `SecurityConfig`에 필터 등록 (`addFilterBefore` + `exceptionHandling`)
+- [x] **유효한 토큰 + DB에 없는 사용자**(탈퇴·삭제, 개발 DB 초기화 등) 처리 — [이슈 #110](https://github.com/inu-jeongbobada/jeongboBada-backend/issues/110).
+      필터에서 `UsernameNotFoundException`을 잡아 무효 토큰과 똑같이 **인증 없이 통과**시킨다.
+      이 필터는 `ExceptionTranslationFilter`보다 앞에 있어서, 필터에서 예외를 던지면 EntryPoint(401)로 가지 못하고
+      공개 API까지 500이 됐다. 지금은 공개 API → 200(토큰 무시), 보호 API → 401(`AUTHENTICATION_REQUIRED`).
+      (`JwtAuthenticationFilterTest`, `DeletedUserTokenIntegrationTest`)
 - [x] 과목 후기 담당자에게 엔티티에 작성자 `user_id` 컬럼(FK) 먼저 넣어두라고 전달함
 - [ ] **후속(다른 도메인 담당)**: 실제로 로그인 필요한 경로를 `permitAll` → `authenticated()`로
       전환하는 건 각 도메인 PR에서 진행 — 위 "실제로 어느 경로를 막을지는 누가 정하나" 참고.
@@ -97,22 +127,113 @@ Figma 화면 기준으로 "로그인 없이 보이는 화면(첫 페이지 등)"
 - [x] `@EnableMethodSecurity` 활성화 + `SecurityConfig`에 `accessDeniedHandler` 배선 —
       `@PreAuthorize("hasRole('ADMIN')")`를 쓸 준비는 끝났고, `CustomUserDetails`가 이미
       `ROLE_ADMIN`/`ROLE_USER` 권한을 부여하고 있어 추가 변경 없이 바로 동작함
-- [ ] **실제 관리자 전용 API 없음** — professor/course 컨트롤러가 전부 조회(GET)만 있어서
-      `@PreAuthorize`를 붙일 대상이 아직 없음. 관리자 전용 API(교수/과목 등록·수정 등)가
-      생기면 그 메서드에 애노테이션만 추가하면 됨
-- [ ] 개인정보 수정 API — 닉네임/비밀번호 변경
+- [x] **첫 관리자 전용 API: 가입 검토** (`/api/admin/verifications`, #142 2단계)
+      `@PreAuthorize` 대신 `SecurityConfig`에서 `/api/admin/**`를 `hasRole("ADMIN")`로 막았다.
+      URL 규칙은 요청 검증(@Valid)보다 먼저 걸려서 토큰 없는 잘못된 요청도 400이 아니라 401이 된다.
+      다른 관리자 API(교수/과목 등록·수정 등)도 `/api/admin/` 아래에 두면 같은 규칙이 적용된다
+- [x] 개인정보 수정 API — 닉네임/비밀번호 변경 ([이슈 #86](https://github.com/inu-jeongbobada/jeongboBada-backend/issues/86))
+      `UserController`/`UserService` 신설(`PATCH /api/users/me/nickname`, `PATCH /api/users/me/password`).
+      `SecurityConfig`에 `/api/users/me/**` `authenticated()` 추가. 비밀번호 변경 성공 시
+      `clearRefreshToken()`으로 기존 refresh token 무효화(재로그인 필요)하도록 결정
 
-### 7. 비밀번호 찾기 (학교 이메일 인증, 3순위)
-PASS 본인인증은 소모임 프로젝트 규모에 비해 비용·행정 부담이 커서 채택하지 않음.
-학번 기반 서비스 특성상 학교 이메일(`@inu.ac.kr`) 인증으로 대체하기로 결정.
-- [ ] `User` 엔티티에 학교 이메일 컬럼 추가 (회원가입 시 같이 받을지, 나중에 등록할지 결정 필요)
-- [ ] 이메일 발송 연동 (Spring Mail + SMTP)
-- [ ] 인증코드 생성/저장(TTL 있는 임시 저장) + 검증 API
-- [ ] 인증 성공 시 비밀번호 재설정 API
+- [x] 내 정보 조회 API — `GET /api/users/me` ([이슈 #96](https://github.com/inu-jeongbobada/jeongboBada-backend/issues/96)).
+      지금 있는 필드(`nickname`, `studentId`, `email`, `department`)만 제공. 통합 테스트 `MyInfoIntegrationTest`
+- [x] `/me` 응답에 `role`(`USER`/`ADMIN`) 추가 ([이슈 #165](https://github.com/inu-jeongbobada/jeongboBada-backend/issues/165)).
+      프론트가 관리자 화면(라우트 가드, 헤더 버튼)을 보여줄지 정하는 용도이고, 실제 권한은 관리자 API의 `hasRole('ADMIN')`이 막는다
+- **관리자 계정 만들기:** 관리자 가입 API나 `data.sql` 시드는 두지 않는다 (비밀번호가 레포에 남고, 몰래 관리자가 될 경로가 생긴다).
+  평소처럼 회원가입한 뒤 DB에서 승격하고, 다시 로그인하면 된다 (권한은 로그인할 때 읽는다).
+  ```sql
+  update users set role = 'ADMIN', verification_status = 'APPROVED' where student_id = '학번';
+  ```
+  - 테이블·컬럼 이름은 소문자로 쓴다. 엔티티에는 `USERS`로 적혀 있지만 실제 테이블은 `users`다. PostgreSQL은 따옴표 없는 이름을 소문자로 바꿔 찾으므로 `USERS`도 동작하지만, `"USERS"`처럼 따옴표를 붙이면 테이블이 없다고 나온다
+  - [x] 승인 상태도 함께 바꾼다. 새로 가입한 계정은 승인 대기(`PENDING`)라, 승인 전 로그인 차단(#142 4단계)이 켜지면 관리자 본인이 로그인하지 못한다
+- [ ] 마이페이지 프로필 필드(이름·학년·부전공·학과 입력, 프로필 사진) — 디자인·프론트 확정 대기. 사진은 공용 파일 업로드(S3, #98) 이후
+
+### 7. 비밀번호 찾기 (이메일 인증, 3순위) — [이슈 #87](https://github.com/inu-jeongbobada/jeongboBada-backend/issues/87)
+PASS 본인인증은 소모임 프로젝트 규모에 비해 비용·행정 부담이 커서 채택하지 않고, 이메일 인증코드 방식으로 대체.
+
+**이메일: 학교 이메일(`@inu.ac.kr`)이 아니라 개인 이메일(도메인 제한 없음)로 결정.**
+당초 "학번 기반 서비스니까 학교 이메일"로 정했었으나, 재검토 결과 폐기함 — 회원가입 자체가 학번을
+검증하지 않아(학교 인증 시스템 연동 없이 그냥 숫자 9자리만 확인) `@inu.ac.kr`을 강제해도 실질적인
+"진짜 인천대생" 보장이 없고, 오히려 학교 이메일을 잘 안 써서 비밀번호 찾기가 필요한 순간 학교
+이메일 자체에도 못 들어가는 역설이 더 큰 리스크로 판단됨. 목적은 "계정 소유자만 열어볼 수 있는
+채널" 확보일 뿐이라 개인 이메일로 충분.
+
+**구현 완료 (feat/password-reset-email)**
+- [x] `User`에 `email` 컬럼 추가 (unique). **DB 컬럼은 null 허용, 회원가입 요청(`SignupRequest.email`)에서만 필수**로 결정 —
+      이 기능 이전에 만들어진 행이 있는 DB(팀원 로컬 등)에서 `ddl-auto: update`가 not null unique 컬럼을 추가하다
+      기동에 실패하는 걸 막기 위함 (unique는 null이 여러 개여도 통과). 저장·비교 전 항상 trim+소문자로 정규화(`EmailNormalizer`).
+      재설정 시점에 즉석으로 받으면 타인 계정을 탈취할 수 있어서, 가입 때 등록해둔 이메일과 일치할 때만 코드를 발송
+- [x] 이메일 발송 연동 — `spring-boot-starter-mail` + `EmailSender`(`global/mail`). `JavaMailSender`를 `ObjectProvider`로 받아서
+      `spring.mail.host`가 없는 환경(CI 등)에서도 앱은 기동되고, 메일을 실제로 보내는 시점에만 실패
+- [x] 인증코드 생성/저장 — `VerificationCode`(`@Embeddable` record: 해시/발급/만료/실패횟수)를 `User`의 컬럼으로 저장
+      (별도 테이블/Redis 없음, refreshToken과 동일 패턴). 정책은 `VerificationCodeManager` 한 곳에서 관리:
+      6자리(`SecureRandom`) · 5분 만료 · 재발송 쿨다운 60초 · 5회 틀리면 폐기 · DB에는 BCrypt 해시만 저장
+- [x] 비밀번호 찾기 API — `PasswordResetController`/`PasswordResetService` (`send-code` → `verify-code` → 재설정, 코드는 1회 소모)
+- [x] 이메일 등록/변경 API (2단계) — `UserController` + `EmailChangeService`
+- [x] 테스트 — 서비스 단위 테스트(`VerificationCodeManagerTest`, `PasswordResetServiceTest`, `EmailChangeServiceTest`)와
+      실제 DB(PostgreSQL)로 API 전체 흐름을 통과시키는 통합 테스트(`PasswordResetIntegrationTest`)
+- [x] 설정값 4곳 반영 — `application.yml`(로컬), `application.yml.example`, `docker-compose.yml`(`SPRING_MAIL_*`), `.env`/`.env.example`(`MAIL_*`)
+
+**이메일 등록/변경 (로그인 필요, 2단계)**
+사용자가 나중에 이메일을 바꾸고 싶을 수 있고, 이메일이 비어 있는 기존 가입자가 처음 등록할 경로도 필요해서 추가.
+- `POST /api/users/me/email/send-code` — **새 이메일**로 인증코드 발송
+- `PATCH /api/users/me/email` — `newEmail` + `code` + `currentPassword`를 받아 변경
+- 2단계로 한 이유: 이메일은 비밀번호 찾기의 열쇠라서 값만 바꾸게 두면 계정 탈취 경로가 됨
+  (access token 탈취 → 공격자 이메일로 변경 → 비밀번호 찾기로 재설정).
+  새 이메일로 코드를 확인해 오타·타인 이메일 등록을 막고, `currentPassword`로 세션 탈취 상태의 변경을 막음
+  (비밀번호 변경 API가 `currentPassword`를 요구하는 것과 같은 이유).
+
+**설계 결정 (헷갈리기 쉬운 것)**
+- **인증코드는 용도별 컬럼을 분리** (`PASSWORD_RESET_CODE_*` / `EMAIL_CHANGE_CODE_*` + `PENDING_EMAIL`). 하나를 공유하면
+  로그인한 공격자가 자기 이메일로 "이메일 변경 코드"를 받아 그 코드로 남의 비밀번호 재설정을 통과시키는 우회가 생김 (테스트로 막혀 있음)
+- **`verify-code`는 코드를 소모하지 않음.** 서버가 "검증 통과"를 기억하지 않으므로 재설정 API가 코드를 다시 검증·소모함
+  → 프론트는 3단계 요청에도 2단계에서 입력한 `code`를 함께 보내야 함. 별도 재설정 토큰 발급 방식은 저장 컬럼이 늘어 채택하지 않음.
+  틀린 횟수는 `verify-code`와 재설정 API가 합쳐서 셈
+- **틀린 횟수는 예외가 나도 DB에 커밋돼야 함** → 검증 메서드에 `@Transactional(noRollbackFor = BusinessException.class)`.
+  이걸 빼면 예외로 롤백돼서 횟수가 쌓이지 않고 무제한 시도가 가능해짐 (통합 테스트가 이 회귀를 잡는 것을 확인함)
+- 이메일 변경은 없음/만료/불일치를 `INVALID_VERIFICATION_CODE` 하나로 응답 — 추측 공격에 힌트를 주지 않기 위함. 비밀번호 찾기는 와이어프레임 화면이 사유마다 달라서 구분한다(2026-11-03). 시도 횟수 제한은 그대로라 코드를 맞힐 확률은 달라지지 않는다
+- 비밀번호 찾기 재설정 성공 시 `clearRefreshToken()` (비밀번호 변경 API와 동일하게 다른 기기는 재로그인)
+
+**남은 갭 / 후속**
+- [x] 실제 SMTP(Gmail 앱 비밀번호) 발송 확인 — 로컬 IDE 실행(`application.yml`)에서 비밀번호 찾기 `send-code` 메일 수신을 확인함 (2026-09-19)
+- [ ] `docker compose`로 backend까지 띄우는 경로(`SPRING_MAIL_*` 환경변수 주입)에서는 아직 발송 확인 안 함. 이 경로는 파일이 아니라
+      환경변수로 주입하므로 로컬 실행과 별개로 확인 필요
+- [ ] 메일 발송이 요청 스레드에서 동기 처리됨 — SMTP 지연이 응답 시간에 그대로 반영되고, 응답 시간 차이로 가입 여부를 추정할 여지가
+      있음. 비동기(`@Async`) 전환 검토
+- [ ] 계정 단위 쿨다운/횟수 제한만 있고 IP 단위 rate limit은 없음 — 타인의 학번+이메일을 알면 60초마다 그 이메일로 코드 메일을 보낼 수 있음
+- [ ] 인증코드 정책 값(5분/60초/5회)이 코드 상수 — 필요해지면 설정으로 분리
+- [ ] 이메일 변경 성공 시 refresh token을 무효화할지 미정 (현재는 유지)
+- [ ] **회원가입 API 계약 변경**(`email` 필수) — 프론트에 공유 필요
+- [ ] 가입 시 이미 등록된 이메일이면 409라 "이 이메일이 가입돼 있다"가 노출됨 (학번/닉네임 중복과 같은 수준으로 감수)
 
 ### 8. 남은 갭 (우선순위 낮음)
 - [ ] Refresh Token DB 평문 저장 → 해시(예: SHA-256) 저장으로 전환 검토
+- [ ] 토큰에 고유 ID(`jti`)가 없고 발급 시각이 초 단위라, **같은 사용자에게 1초 안에 두 번 발급하면 똑같은 토큰 문자열**이 나온다.
+      그 사이의 재발급(회전)은 사실상 이전 refresh를 그대로 돌려주는 셈이다. `JwtTokenProvider.createToken`에 `.id(UUID)`를 넣으면 해결 (#129 작업 중 발견)
 - [ ] 정상·누락·변조·만료 토큰 자동 테스트 코드 (지금은 Postman 수동 확인만 함)
+
+### 9. 회원가입 보강 (중복확인 API, 이메일 인증 여부) — [이슈 #97](https://github.com/inu-jeongbobada/jeongboBada-backend/issues/97)
+
+**결정 사항**
+- **닉네임 중복확인 API만 제공.** 학번/이메일 중복확인 API는 만들지 않음 — "이 학번/이메일로 이미 가입돼 있다"를 누구나 조회 가능하게 하는 user enumeration이라서. 가입 시도 시 409로만 안내(기존 동작 유지)
+- **가입 시 이메일 인증은 하지 않음.** 이유:
+  1. 정보바다는 이미 재학생 인증(신분증/학과 확인 사진, [이슈 #98](https://github.com/inu-jeongbobada/jeongboBada-backend/issues/98))으로 사람이 검토하는 절차를 계획 중이라, 이메일 인증까지 더하면 가입 단계 마찰이 이중으로 커짐
+  2. `VerificationCode`를 `User` 행에 저장하는 현재 구조상, 가입 전(= User 행이 없는 시점) 인증은 저장 위치를 새로 설계해야 해서 구현 비용도 있음
+
+**알려진 한계 (의도적으로 미해결)**
+가입 시 이메일을 오타로 잘못 입력하고, 이후 비밀번호까지 잊어버리면 **자동 복구 수단이 없다.**
+- 비밀번호 찾기: 코드가 오타난(본인 소유 아닌) 이메일로 감 → 못 받음
+- 이메일 변경: `currentPassword` 확인이 필수([섹션 7](#7-비밀번호-찾기-이메일-인증-3순위--이슈-87) 참고) → 비밀번호를 모르면 못 바꿈
+- → 두 경로 다 막혀서 자력으로는 복구 불가능한 상태가 됨
+
+재학생 인증 서류를 계정 복구용으로 재요구하는 것도 검토했으나 **기각** — 단순 락아웃 하나 풀자고 무거운 재검증을 또 시키는 건 과함. 대신:
+- **지금은 정식 기능으로 안 만듦.** 발생하면 사용자가 다른 채널(카톡/디스코드 등)로 학번을 밝히고 문의 → 관리자가 DB에서 직접 비밀번호/이메일을 수동으로 고쳐주는 방식으로 대응 (소모임 규모라 감수 가능한 수준으로 판단)
+- [ ] [이슈 #98](https://github.com/inu-jeongbobada/jeongboBada-backend/issues/98)의 재학생 인증이 실제로 구현되면, 그때 보유하게 될 신원 확인 데이터를 정식 계정 복구 경로로 쓸지 재검토
+
+**구현 완료**
+- [x] `GET /api/auth/check-nickname?nickname=` (`{ "available": true|false }`) — `AuthController`/`AuthService.checkNicknameAvailability`, `UserRepository.existsByNickname`
+- [x] 통합 테스트(`CheckNicknameIntegrationTest`) — 미사용 닉네임/이미 가입된 닉네임 두 케이스
 
 # 예상 브랜치
 - feat/security-config

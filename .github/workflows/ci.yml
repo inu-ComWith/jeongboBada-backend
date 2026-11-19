@@ -21,20 +21,19 @@ jobs:
     name: 빌드 및 테스트
     runs-on: ubuntu-latest
 
-    # docker-compose.yml과 동일한 MySQL 8.4 컨테이너를 서비스로 띄워
+    # docker-compose.yml과 동일한 PostgreSQL 17 컨테이너를 서비스로 띄워
     # @SpringBootTest 컨텍스트 로딩이 실제 DB에 붙을 수 있게 한다.
     services:
-      mysql:
-        image: mysql:8.4
+      postgres:
+        image: postgres:17
         env:
-          MYSQL_DATABASE: jeongbobada
-          MYSQL_USER: jeongbobada
-          MYSQL_PASSWORD: jeongbobada
-          MYSQL_ROOT_PASSWORD: root
+          POSTGRES_DB: jeongbobada
+          POSTGRES_USER: jeongbobada
+          POSTGRES_PASSWORD: jeongbobada
         ports:
-          - 3306:3306
+          - 5432:5432
         options: >-
-          --health-cmd="mysqladmin ping -h localhost -uroot -proot"
+          --health-cmd="pg_isready -U jeongbobada -d jeongbobada"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=10
@@ -42,7 +41,7 @@ jobs:
     # application.yml은 gitignore 대상이라 CI 체크아웃본에는 없다.
     # 대신 환경변수로 datasource를 주입한다 (Spring relaxed binding).
     env:
-      SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/jeongbobada
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/jeongbobada
       SPRING_DATASOURCE_USERNAME: jeongbobada
       SPRING_DATASOURCE_PASSWORD: jeongbobada
 
@@ -72,3 +71,25 @@ jobs:
             build/reports/tests/test
             build/test-results/test
           retention-days: 7
+
+  # docker compose로 PostgreSQL + backend를 실제로 띄워 기동되는지 확인한다 (#93).
+  # 로컬 실행(application.yml)과 docker compose(환경변수)는 설정을 받는 방식이 달라서,
+  # docker-compose.yml에 새 설정값을 빼먹으면 위 빌드는 통과해도 컨테이너는 기동에 실패한다.
+  # 위 build 잡과 병렬로 돈다.
+  compose-smoke:
+    name: docker compose 기동 스모크
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: 체크아웃
+        uses: actions/checkout@v7
+
+      - name: .env 준비
+        # .env.example의 JWT_SECRET은 기본값이 없어서 CI 전용 임시값을 넣는다 (실제 시크릿 아님).
+        run: |
+          cp .env.example .env
+          sed -i 's/^JWT_SECRET=.*/JWT_SECRET=ci-smoke-only-secret-key-at-least-32-bytes-long/' .env
+
+      - name: 기동 및 확인
+        run: bash scripts/ci/compose-smoke.sh
