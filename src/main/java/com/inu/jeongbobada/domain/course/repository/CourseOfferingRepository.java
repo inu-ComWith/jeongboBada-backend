@@ -38,8 +38,8 @@ public interface CourseOfferingRepository extends JpaRepository<CourseOffering, 
             join fetch offering.professor professor
             where offering.active = true
               and (
-                replace(course.courseName, ' ', '') like concat('%', :keyword, '%')
-                or replace(professor.professorName, ' ', '') like concat('%', :keyword, '%')
+                replace(course.courseName, ' ', '') like concat('%', :keyword, '%') escape '\\'
+                or replace(professor.professorName, ' ', '') like concat('%', :keyword, '%') escape '\\'
               )
             order by collate(course.courseName as ucs_basic) asc,
                      collate(professor.professorName as ucs_basic) asc,
@@ -52,8 +52,8 @@ public interface CourseOfferingRepository extends JpaRepository<CourseOffering, 
             join offering.professor professor
             where offering.active = true
               and (
-                replace(course.courseName, ' ', '') like concat('%', :keyword, '%')
-                or replace(professor.professorName, ' ', '') like concat('%', :keyword, '%')
+                replace(course.courseName, ' ', '') like concat('%', :keyword, '%') escape '\\'
+                or replace(professor.professorName, ' ', '') like concat('%', :keyword, '%') escape '\\'
               )
             """
     )
