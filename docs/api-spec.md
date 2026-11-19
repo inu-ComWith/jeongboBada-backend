@@ -35,8 +35,9 @@
   { "success": false, "code": "VERIFICATION_PENDING", "message": "가입 승인을 기다리고 있어요",
     "data": { "requestedAt": "2026-11-18T10:00:00" } }
   { "success": false, "code": "VERIFICATION_REJECTED", "message": "가입 신청이 반려되었어요. 서류를 다시 제출해주세요",
-    "data": { "rejectionReason": "학번이 보이지 않아요" } }
+    "data": { "rejectionReason": "학번이 보이지 않아요", "nickname": "물먹은다람쥐" } }
   ```
+  - 반려 응답의 `nickname`은 "서류 다시 올리기" 화면의 잠긴 닉네임 칸에 쓴다. 반려 사용자는 토큰이 없어 내 정보 조회(`/api/users/me`)를 쓸 수 없다
   - 상태는 비밀번호 확인 **뒤에** 본다. 비밀번호가 틀리면 상태와 상관없이 401 `INVALID_CREDENTIALS`
   - 토큰 재발급(`/api/auth/reissue`)도 같은 이유로 403 (차단 전에 받은 refresh token으로 계속 쓰는 것 방지)
   - 403이라 프론트의 "401 → 토큰 재발급" 처리와 겹치지 않는다
@@ -207,7 +208,7 @@
 | 429 | `PASSWORD_RESET_RESEND_LIMIT_EXCEEDED` | 비밀번호 찾기 재발송 하루 5회 초과 |
 | 429 | `LOGIN_LOCKED` | 로그인 5회 실패로 5분 잠금. 남은 시간(초)은 `Retry-After` 헤더 |
 | 403 | `VERIFICATION_PENDING` | 승인 대기 계정의 로그인·토큰 재발급. `data.requestedAt`에 신청일 |
-| 403 | `VERIFICATION_REJECTED` | 반려 계정의 로그인·토큰 재발급. `data.rejectionReason`에 반려 사유(사유가 필수가 되기 전에 반려된 계정은 없을 수 있음) |
+| 403 | `VERIFICATION_REJECTED` | 반려 계정의 로그인·토큰 재발급. `data.rejectionReason`에 반려 사유(사유가 필수가 되기 전에 반려된 계정은 없을 수 있음), `data.nickname`에 닉네임 |
 | 409 | `VERIFICATION_NOT_REJECTED` | 반려 상태가 아닌데 서류를 다시 제출함 (이미 검토 중이거나 승인됨) |
 | 409 | `VERIFICATION_ALREADY_PROCESSED` | 관리자가 승인 대기가 아닌(이미 승인·거절된) 가입 신청을 처리하려 함 |
 | 503 | `EMAIL_SEND_FAILED` | 메일 발송 실패 |
