@@ -39,6 +39,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.hamcrest.Matchers.hasItems;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -58,17 +59,15 @@ class CourseReviewCreateIntegrationTest {
     private static final String VALID_BODY = """
         {
           "professorId": %d,
+          "academicYear": 2026,
+          "semester": "FIRST",
           "rating": "FOUR",
           "content": "과제가 많지만 설명이 친절해서 배울 게 많은 수업이었습니다.",
-          "textbook": "OPTIONAL",
-          "assignmentDifficulty": "NORMAL",
-          "assignmentAmount": "HIGH",
-          "groupActivity": "OCCASIONAL",
-          "attendance": "STRICT",
+          "groupActivity": "NONE",
+          "attendance": "ELECTRONIC",
           "examCount": "TWO",
-          "quizDifficulty": "EASY",
-          "examDifficulty": "HARD",
-          "quizCount": "ONE",
+          "assignmentFrequency": "NORMAL",
+          "quizFrequency": "LOW",
           "gradingType": "NORMAL"
         }
         """;
@@ -77,15 +76,11 @@ class CourseReviewCreateIntegrationTest {
         {
           "rating": "FIVE",
           "content": "수정한 후기 내용이며 강의 설명과 실습이 모두 만족스러웠습니다.",
-          "textbook": "REQUIRED",
-          "assignmentDifficulty": "HARD",
-          "assignmentAmount": "LOW",
-          "groupActivity": "FREQUENT",
-          "attendance": "RANDOM",
+          "groupActivity": "EXISTS",
+          "attendance": "ROLL_CALL",
           "examCount": "ONE",
-          "quizDifficulty": "NORMAL",
-          "examDifficulty": "NORMAL",
-          "quizCount": "TWO",
+          "assignmentFrequency": "HIGH",
+          "quizFrequency": "NORMAL",
           "gradingType": "GENEROUS"
         }
         """;
@@ -152,18 +147,35 @@ class CourseReviewCreateIntegrationTest {
         createReview(login(), VALID_BODY.formatted(professor.getProfessorId()))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success").value(true));
+
+        CourseReview review = courseReviewRepository
+            .findAllByCourse_CourseIdOrderByCreatedAtDescReviewIdDesc(course.getCourseId())
+            .getFirst();
+        assertThat(review.getAcademicYear()).isEqualTo(2026);
+        assertThat(review.getSemester()).isEqualTo(Semester.FIRST);
     }
 
-    // #161: 같은 교수가 같은 과목을 두 학기 이상 개설해도 후기를 쓸 수 있다 (예전에는 개설 이력 조회가 한 건만 기대해 500)
+    // 수강 시기는 후기 정보일 뿐 중복 기준이 아니므로, 학기가 달라도 같은 과목·교수에는 한 번만 작성한다.
     @Test
-    void 같은_과목을_두_학기_개설한_교수에게도_강의평을_작성한다() throws Exception {
+    void 다른_학기에도_같은_과목과_교수의_후기는_중복_작성할_수_없다() throws Exception {
         CourseOffering secondSemester = courseOfferingRepository.save(new CourseOffering(
             course, professor, 2026, Semester.SECOND, Grade.SECOND, Credits.THIRD,
             "화 1,2", CourseType.MAJOR_CORE, EvaluationType.RELATIVE, IsOnline.OFFLINE));
         try {
-            createReview(login(), VALID_BODY.formatted(professor.getProfessorId()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true));
+            String token = login();
+            createReview(token, VALID_BODY.formatted(professor.getProfessorId()))
+                .andExpect(status().isOk());
+
+            String secondSemesterBody = VALID_BODY.formatted(professor.getProfessorId())
+                .replace("\"semester\": \"FIRST\"", "\"semester\": \"SECOND\"");
+
+            createReview(token, secondSemesterBody)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("DUPLICATE_COURSE_REVIEW"));
+
+            assertThat(courseReviewRepository
+                .findAllByCourse_CourseIdOrderByCreatedAtDescReviewIdDesc(course.getCourseId()))
+                .hasSize(1);
         } finally {
             courseReviewRepository.deleteAll(
                 courseReviewRepository.findAllByCourse_CourseIdOrderByCreatedAtDescReviewIdDesc(course.getCourseId()));
@@ -176,7 +188,29 @@ class CourseReviewCreateIntegrationTest {
         createReview(login(), "{}")
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"))
-            .andExpect(jsonPath("$.errors[*].field").value(hasItems("professorId", "rating", "content", "gradingType")));
+            .andExpect(jsonPath("$.errors[*].field").value(hasItems(
+                "professorId", "academicYear", "semester", "rating", "content", "gradingType")));
+    }
+
+    @Test
+    void 실제_개설되지_않은_연도와_학기로_후기를_작성하면_404() throws Exception {
+        String body = VALID_BODY.formatted(professor.getProfessorId())
+            .replace("\"academicYear\": 2026", "\"academicYear\": 2025");
+
+        createReview(login(), body)
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("COURSE_OFFERING_NOT_FOUND"));
+    }
+
+    @Test
+    void 후기_조회_응답에_수강_연도와_학기가_포함된다() throws Exception {
+        createReview(login(), VALID_BODY.formatted(professor.getProfessorId()))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/courses/{courseId}/reviews", course.getCourseId()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data[0].academicYear").value(2026))
+            .andExpect(jsonPath("$.data[0].semester").value("FIRST"));
     }
 
     @Test
@@ -193,6 +227,16 @@ class CourseReviewCreateIntegrationTest {
     void 내용이_20자_미만이면_400() throws Exception {
         String body = VALID_BODY.formatted(professor.getProfessorId())
             .replace("과제가 많지만 설명이 친절해서 배울 게 많은 수업이었습니다.", "짧음");
+
+        createReview(login(), body)
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errors[0].field").value("content"));
+    }
+
+    @Test
+    void 내용이_1000자를_초과하면_400() throws Exception {
+        String body = VALID_BODY.formatted(professor.getProfessorId())
+            .replace("과제가 많지만 설명이 친절해서 배울 게 많은 수업이었습니다.", "가".repeat(1001));
 
         createReview(login(), body)
             .andExpect(status().isBadRequest())
@@ -290,6 +334,11 @@ class CourseReviewCreateIntegrationTest {
         assertThat(updated.getRating().name()).isEqualTo("FIVE");
         assertThat(updated.getContent()).isEqualTo("수정한 후기 내용이며 강의 설명과 실습이 모두 만족스러웠습니다.");
         assertThat(updated.getProfessor().getProfessorId()).isEqualTo(professor.getProfessorId());
+        assertThat(updated.getGroupActivity().name()).isEqualTo("EXISTS");
+        assertThat(updated.getAttendance().name()).isEqualTo("ROLL_CALL");
+        assertThat(updated.getExamCount().name()).isEqualTo("ONE");
+        assertThat(updated.getAssignmentFrequency().name()).isEqualTo("HIGH");
+        assertThat(updated.getQuizFrequency().name()).isEqualTo("NORMAL");
     }
 
     @Test

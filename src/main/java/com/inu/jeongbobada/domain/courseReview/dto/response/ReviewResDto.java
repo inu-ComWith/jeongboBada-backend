@@ -1,5 +1,6 @@
 package com.inu.jeongbobada.domain.courseReview.dto.response;
 
+import com.inu.jeongbobada.domain.course.enums.Semester;
 import com.inu.jeongbobada.domain.courseReview.enums.Rating;
 
 import java.time.LocalDateTime;
@@ -10,7 +11,11 @@ public record ReviewResDto(
 
     Rating rating,
 
-    String content ,
+    String content,
+
+    Integer academicYear,
+
+    Semester semester,
 
     LocalDateTime updatedAt,
 

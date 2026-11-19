@@ -46,15 +46,26 @@ public class CourseReviewService {
         Professor professor = professorRepository.findById(request.professorId())
             .orElseThrow(() -> new BusinessException(ProfessorErrorCode.PROFESSOR_NOT_FOUND));
 
-        // 이 교수가 실제로 이 과목을 개설한 적 있는지 확인 (엉뚱한 과목-교수 조합으로 후기가 달리는 것 방지)
-        if (!courseOfferingRepository.existsByCourse_CourseIdAndProfessor_ProfessorId(courseId, professor.getProfessorId())) {
+        // 요청한 과목·교수·연도·학기 조합이 실제 개설 이력에 있는지 확인한다.
+        if (!courseOfferingRepository
+            .existsByCourse_CourseIdAndProfessor_ProfessorIdAndAcademicYearAndSemester(
+                courseId,
+                professor.getProfessorId(),
+                request.academicYear(),
+                request.semester()
+            )) {
             throw new BusinessException(CourseErrorCode.COURSE_OFFERING_NOT_FOUND);
         }
 
-        // 같은 사람이 같은 강의(과목+교수)에 두 번 쓰는 것 방지. 확인과 저장 사이 동시 요청은
+        // 수강 시기는 후기 정보로만 저장한다. 같은 사람이 같은 과목·교수에 두 번 쓰는 것은 방지하고,
+        // 확인과 저장 사이 동시 요청은
         // DB UNIQUE에 걸려 전역 핸들러가 409 DUPLICATE_RESOURCE로 응답한다 (#118)
-        if (courseReviewRepository.existsByUser_UserIdAndCourse_CourseIdAndProfessor_ProfessorId(
-            userId, courseId, professor.getProfessorId())) {
+        if (courseReviewRepository
+            .existsByUser_UserIdAndCourse_CourseIdAndProfessor_ProfessorId(
+                userId,
+                courseId,
+                professor.getProfessorId()
+            )) {
             throw new BusinessException(CourseReviewErrorCode.DUPLICATE_COURSE_REVIEW);
         }
 
@@ -62,17 +73,15 @@ public class CourseReviewService {
             user,
             course,
             professor,
+            request.academicYear(),
+            request.semester(),
             request.rating(),
             request.content(),
-            request.textbook(),
-            request.assignmentDifficulty(),
-            request.assignmentAmount(),
             request.groupActivity(),
             request.attendance(),
             request.examCount(),
-            request.quizDifficulty(),
-            request.examDifficulty(),
-            request.quizCount(),
+            request.assignmentFrequency(),
+            request.quizFrequency(),
             request.gradingType()
         );
 
@@ -108,15 +117,11 @@ public class CourseReviewService {
         review.update(
             request.rating(),
             request.content(),
-            request.textbook(),
-            request.assignmentDifficulty(),
-            request.assignmentAmount(),
             request.groupActivity(),
             request.attendance(),
             request.examCount(),
-            request.quizDifficulty(),
-            request.examDifficulty(),
-            request.quizCount(),
+            request.assignmentFrequency(),
+            request.quizFrequency(),
             request.gradingType()
         );
 
@@ -145,6 +150,8 @@ public class CourseReviewService {
                 review.getReviewId(),
                 review.getRating(),
                 review.getContent(),
+                review.getAcademicYear(),
+                review.getSemester(),
                 review.getUpdatedAt(),
                 review.getCreatedAt()
             ))
