@@ -30,4 +30,15 @@ public class ProfessorService {
 
         return ProfessorDetailResponseDto.from(professorDetail);
     }
+
+    public List<ProfessorListResponseDto> searchProfessorLists(String professorName) {
+        if (professorName == null) {
+            return getProfessorLists(); // null이면 전체 List 반환
+        }
+
+        // .trim() -> 문자열 공백 제거
+        List<Professor> professorSearchLists = professorRepository.findByProfessorNameContainingIgnoreCase(professorName.trim());
+
+        return professorSearchLists.stream().map(ProfessorListResponseDto::from).toList();
+    }
 }
