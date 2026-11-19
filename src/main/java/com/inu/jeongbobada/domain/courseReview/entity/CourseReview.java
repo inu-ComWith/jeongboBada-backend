@@ -53,9 +53,10 @@ public class CourseReview extends BaseEntity {
     @JoinColumn(name = "PROFESSOR_ID", nullable = false)
     private Professor professor;
 
-    // 개설 이력은 학기마다 갱신될 수 있으므로 FK로 연결하지 않고 작성 당시 수강 시기를 보존한다.
+    // 작성자가 이 과목을 수강한 연도와 학기를 후기 정보로 보존한다.
+    @Enumerated(EnumType.STRING)
     @Column(name = "ACADEMIC_YEAR", nullable = false)
-    private Integer academicYear;
+    private AcademicYear academicYear;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "SEMESTER", nullable = false)
@@ -105,7 +106,7 @@ public class CourseReview extends BaseEntity {
         User user,
         Course course,
         Professor professor,
-        Integer academicYear,
+        AcademicYear academicYear,
         Semester semester,
         Rating rating,
         String content,

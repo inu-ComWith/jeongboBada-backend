@@ -2,16 +2,10 @@ package com.inu.jeongbobada.domain.courseReview;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.inu.jeongbobada.domain.course.entity.Course;
-import com.inu.jeongbobada.domain.course.entity.CourseOffering;
-import com.inu.jeongbobada.domain.course.enums.CourseType;
-import com.inu.jeongbobada.domain.course.enums.Credits;
-import com.inu.jeongbobada.domain.course.enums.EvaluationType;
-import com.inu.jeongbobada.domain.course.enums.Grade;
-import com.inu.jeongbobada.domain.course.enums.IsOnline;
 import com.inu.jeongbobada.domain.course.enums.Semester;
-import com.inu.jeongbobada.domain.course.repository.CourseOfferingRepository;
 import com.inu.jeongbobada.domain.course.repository.CourseRepository;
 import com.inu.jeongbobada.domain.courseReview.entity.CourseReview;
+import com.inu.jeongbobada.domain.courseReview.enums.AcademicYear;
 import com.inu.jeongbobada.domain.courseReview.repository.CourseReviewRepository;
 import com.inu.jeongbobada.domain.professor.entity.Professor;
 import com.inu.jeongbobada.domain.professor.repository.ProfessorRepository;
@@ -59,7 +53,7 @@ class CourseReviewCreateIntegrationTest {
     private static final String VALID_BODY = """
         {
           "professorId": %d,
-          "academicYear": 2026,
+          "academicYear": "YEAR_2026",
           "semester": "FIRST",
           "rating": "FOUR",
           "content": "과제가 많지만 설명이 친절해서 배울 게 많은 수업이었습니다.",
@@ -101,9 +95,6 @@ class CourseReviewCreateIntegrationTest {
     private ProfessorRepository professorRepository;
 
     @Autowired
-    private CourseOfferingRepository courseOfferingRepository;
-
-    @Autowired
     private CourseReviewRepository courseReviewRepository;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -112,7 +103,6 @@ class CourseReviewCreateIntegrationTest {
     private final List<String> additionalStudentIds = new ArrayList<>();
     private Course course;
     private Professor professor;
-    private CourseOffering offering;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -124,16 +114,12 @@ class CourseReviewCreateIntegrationTest {
 
         course = courseRepository.save(new Course("테스트과목", "T" + n, "테스트 과목 설명"));
         professor = professorRepository.save(new Professor(null, "테스트교수", "테스트 교수 설명", null, "200", "032-000-0000", "email@inu.ac.kr"));
-        offering = courseOfferingRepository.save(new CourseOffering(
-            course, professor, 2026, Semester.FIRST, Grade.SECOND, Credits.THIRD,
-            "월 1,2", CourseType.MAJOR_CORE, EvaluationType.RELATIVE, IsOnline.OFFLINE));
     }
 
     @AfterEach
     void cleanUp() {
         courseReviewRepository.deleteAll(
             courseReviewRepository.findAllByCourse_CourseIdOrderByCreatedAtDescReviewIdDesc(course.getCourseId()));
-        courseOfferingRepository.delete(offering);
         courseRepository.delete(course);
         professorRepository.delete(professor);
         userRepository.findByStudentId(studentId).ifPresent(userRepository::delete);
@@ -151,36 +137,27 @@ class CourseReviewCreateIntegrationTest {
         CourseReview review = courseReviewRepository
             .findAllByCourse_CourseIdOrderByCreatedAtDescReviewIdDesc(course.getCourseId())
             .getFirst();
-        assertThat(review.getAcademicYear()).isEqualTo(2026);
+        assertThat(review.getAcademicYear()).isEqualTo(AcademicYear.YEAR_2026);
         assertThat(review.getSemester()).isEqualTo(Semester.FIRST);
     }
 
     // 수강 시기는 후기 정보일 뿐 중복 기준이 아니므로, 학기가 달라도 같은 과목·교수에는 한 번만 작성한다.
     @Test
     void 다른_학기에도_같은_과목과_교수의_후기는_중복_작성할_수_없다() throws Exception {
-        CourseOffering secondSemester = courseOfferingRepository.save(new CourseOffering(
-            course, professor, 2026, Semester.SECOND, Grade.SECOND, Credits.THIRD,
-            "화 1,2", CourseType.MAJOR_CORE, EvaluationType.RELATIVE, IsOnline.OFFLINE));
-        try {
-            String token = login();
-            createReview(token, VALID_BODY.formatted(professor.getProfessorId()))
-                .andExpect(status().isOk());
+        String token = login();
+        createReview(token, VALID_BODY.formatted(professor.getProfessorId()))
+            .andExpect(status().isOk());
 
-            String secondSemesterBody = VALID_BODY.formatted(professor.getProfessorId())
-                .replace("\"semester\": \"FIRST\"", "\"semester\": \"SECOND\"");
+        String secondSemesterBody = VALID_BODY.formatted(professor.getProfessorId())
+            .replace("\"semester\": \"FIRST\"", "\"semester\": \"SECOND\"");
 
-            createReview(token, secondSemesterBody)
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("DUPLICATE_COURSE_REVIEW"));
+        createReview(token, secondSemesterBody)
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.code").value("DUPLICATE_COURSE_REVIEW"));
 
-            assertThat(courseReviewRepository
-                .findAllByCourse_CourseIdOrderByCreatedAtDescReviewIdDesc(course.getCourseId()))
-                .hasSize(1);
-        } finally {
-            courseReviewRepository.deleteAll(
-                courseReviewRepository.findAllByCourse_CourseIdOrderByCreatedAtDescReviewIdDesc(course.getCourseId()));
-            courseOfferingRepository.delete(secondSemester);
-        }
+        assertThat(courseReviewRepository
+            .findAllByCourse_CourseIdOrderByCreatedAtDescReviewIdDesc(course.getCourseId()))
+            .hasSize(1);
     }
 
     @Test
@@ -193,13 +170,13 @@ class CourseReviewCreateIntegrationTest {
     }
 
     @Test
-    void 실제_개설되지_않은_연도와_학기로_후기를_작성하면_404() throws Exception {
+    void 허용하지_않는_수강_연도이면_400() throws Exception {
         String body = VALID_BODY.formatted(professor.getProfessorId())
-            .replace("\"academicYear\": 2026", "\"academicYear\": 2025");
+            .replace("\"academicYear\": \"YEAR_2026\"", "\"academicYear\": \"YEAR_2022\"");
 
         createReview(login(), body)
-            .andExpect(status().isNotFound())
-            .andExpect(jsonPath("$.code").value("COURSE_OFFERING_NOT_FOUND"));
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
     }
 
     @Test
@@ -209,7 +186,7 @@ class CourseReviewCreateIntegrationTest {
 
         mockMvc.perform(get("/api/courses/{courseId}/reviews", course.getCourseId()))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data[0].academicYear").value(2026))
+            .andExpect(jsonPath("$.data[0].academicYear").value("YEAR_2026"))
             .andExpect(jsonPath("$.data[0].semester").value("FIRST"));
     }
 

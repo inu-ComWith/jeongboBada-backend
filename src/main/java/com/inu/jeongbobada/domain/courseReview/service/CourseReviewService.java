@@ -5,7 +5,6 @@ import com.inu.jeongbobada.domain.courseReview.dto.request.ReviewUpdateReqDto;
 import com.inu.jeongbobada.domain.courseReview.dto.response.ReviewResDto;
 import com.inu.jeongbobada.domain.course.entity.Course;
 import com.inu.jeongbobada.domain.course.exception.CourseErrorCode;
-import com.inu.jeongbobada.domain.course.repository.CourseOfferingRepository;
 import com.inu.jeongbobada.domain.course.repository.CourseRepository;
 import com.inu.jeongbobada.domain.courseReview.entity.CourseReview;
 import com.inu.jeongbobada.domain.courseReview.enums.ReviewSort;
@@ -29,7 +28,6 @@ import java.util.List;
 public class CourseReviewService {
     private final CourseReviewRepository courseReviewRepository;
     private final CourseRepository courseRepository;
-    private final CourseOfferingRepository courseOfferingRepository;
     private final ProfessorRepository professorRepository;
     private final UserRepository userRepository;
 
@@ -45,17 +43,6 @@ public class CourseReviewService {
 
         Professor professor = professorRepository.findById(request.professorId())
             .orElseThrow(() -> new BusinessException(ProfessorErrorCode.PROFESSOR_NOT_FOUND));
-
-        // 요청한 과목·교수·연도·학기 조합이 실제 개설 이력에 있는지 확인한다.
-        if (!courseOfferingRepository
-            .existsByCourse_CourseIdAndProfessor_ProfessorIdAndAcademicYearAndSemester(
-                courseId,
-                professor.getProfessorId(),
-                request.academicYear(),
-                request.semester()
-            )) {
-            throw new BusinessException(CourseErrorCode.COURSE_OFFERING_NOT_FOUND);
-        }
 
         // 수강 시기는 후기 정보로만 저장한다. 같은 사람이 같은 과목·교수에 두 번 쓰는 것은 방지하고,
         // 확인과 저장 사이 동시 요청은

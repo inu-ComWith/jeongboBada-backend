@@ -15,7 +15,7 @@ public record ReviewCreateReqDto(
     Long professorId,
 
     @NotNull(message = "수강 연도를 선택해주세요.")
-    Integer academicYear,
+    AcademicYear academicYear,
 
     @NotNull(message = "수강 학기를 선택해주세요.")
     Semester semester,

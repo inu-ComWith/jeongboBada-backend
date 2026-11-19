@@ -46,8 +46,8 @@ CourseOffering (학기별 개설, 학기마다 값이 바뀌는 정보)
 CourseReview (후기 작성 당시 수강 정보)
  ├─ course        FK -> Course      (학기 안 타는 리뷰 대상 축 1)
  ├─ professor     FK -> Professor   (리뷰 대상 축 2)
- ├─ academicYear  작성 당시 수강 연도 스냅샷
- ├─ semester      작성 당시 수강 학기 스냅샷
+ ├─ academicYear  작성자가 수강한 연도 (YEAR_2023~YEAR_2026)
+ ├─ semester      작성자가 수강한 학기
  └─ UNIQUE(user, course, professor)
 ```
 
@@ -58,7 +58,7 @@ CourseReview (후기 작성 당시 수강 정보)
 - `GET /api/courses` — **이번 학기 개설 강의(활성 CourseOffering) 기준으로 한 줄씩** 응답. `courseId`는 Course의 안정적인 id라서, 이 값으로 상세/후기 조회를 계속 이어갈 수 있다. (기존엔 목록 응답에 courseId가 아예 없던 버그가 있었음 — 이번에 같이 해결됨)
   - 선택 쿼리 파라미터 `keyword`로 강의명·교수명 부분 일치 검색. 검색어와 저장된 이름의 공백을 제거해 비교하고, 빈 검색어는 전체 목록을 반환한다.
 - `GET /api/courses/{courseId}` — Course 기본 정보 + 그 과목의 활성 `CourseOffering` 목록(교수/시간표/학점 등)을 함께 반환.
-- `POST /api/courses/{courseId}/reviews` — 요청 바디의 `professorId`, `academicYear`, `semester`로 실제 `(course, professor, academicYear, semester)` 개설 이력이 있는지 검증한다. 연도·학기는 `CourseReview`에 직접 저장해 작성 당시 수강 시기를 보존하며, 후기 조회 필터나 중복 기준에는 사용하지 않는다.
+- `POST /api/courses/{courseId}/reviews` — `academicYear`, `semester`는 작성자가 선택한 수강 시기로 후기에 저장한다. 개설 이력과 대조하지 않으며 후기 조회 필터나 중복 기준에도 사용하지 않는다.
   - 로그인 필요 — `SecurityConfig`에서 **POST만** `authenticated()` (조회 GET은 공개). 컨트롤러 null 체크 대신 여기서 막아야 토큰 없는 잘못된 요청이 400이 아니라 401이 된다.
   - 요청 DTO(`ReviewCreateReqDto`)에 엔티티와 같은 필수·길이 검증 + `@Valid` → 누락 시 500이 아니라 400(`errors`에 필드) (#105).
   - 같은 `(user, course, professor)`로 이미 썼으면 수강 시기가 달라도 서비스 사전 확인에서 409 `DUPLICATE_COURSE_REVIEW`.

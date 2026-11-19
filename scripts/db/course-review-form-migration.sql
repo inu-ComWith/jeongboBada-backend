@@ -11,12 +11,13 @@ END
 $$;
 
 ALTER TABLE course_review
-    ADD COLUMN IF NOT EXISTS academic_year INTEGER,
+    ADD COLUMN IF NOT EXISTS academic_year VARCHAR(255),
     ADD COLUMN IF NOT EXISTS semester VARCHAR(255),
     ADD COLUMN IF NOT EXISTS assignment_frequency VARCHAR(255),
     ADD COLUMN IF NOT EXISTS quiz_frequency VARCHAR(255);
 
 ALTER TABLE course_review
+    ALTER COLUMN academic_year TYPE VARCHAR(255) USING academic_year::VARCHAR,
     ALTER COLUMN academic_year SET NOT NULL,
     ALTER COLUMN semester SET NOT NULL,
     ALTER COLUMN assignment_frequency SET NOT NULL,
@@ -32,6 +33,7 @@ ALTER TABLE course_review
         UNIQUE (user_id, course_id, professor_id);
 
 ALTER TABLE course_review
+    DROP COLUMN IF EXISTS enrollment_grade,
     DROP COLUMN IF EXISTS text_book,
     DROP COLUMN IF EXISTS assignment_difficulty,
     DROP COLUMN IF EXISTS assignment_amount,
