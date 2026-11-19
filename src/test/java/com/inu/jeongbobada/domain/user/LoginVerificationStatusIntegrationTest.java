@@ -52,13 +52,15 @@ class LoginVerificationStatusIntegrationTest {
 
     private String studentId;
     private String email;
+    private String nickname;
 
     @BeforeEach
     void signUp() throws Exception {
         int n = ThreadLocalRandom.current().nextInt(100_000_000);
         studentId = String.format("9%08d", n);
         email = "vs" + n + "@example.com";
-        mockMvc.perform(SignupRequests.signup(studentId, PASSWORD, "vs" + (n % 10_000), email))
+        nickname = "vs" + (n % 10_000);
+        mockMvc.perform(SignupRequests.signup(studentId, PASSWORD, nickname, email))
             .andExpect(status().isCreated());
     }
 
@@ -74,11 +76,13 @@ class LoginVerificationStatusIntegrationTest {
             .andExpect(jsonPath("$.code").value("VERIFICATION_PENDING"))
             .andExpect(jsonPath("$.data.requestedAt").exists())
             .andExpect(jsonPath("$.data.rejectionReason").doesNotExist())
+            .andExpect(jsonPath("$.data.nickname").doesNotExist())
             .andExpect(jsonPath("$.data.accessToken").doesNotExist());
     }
 
+    // 닉네임은 서류 다시 올리기 화면이 잠긴 칸으로 보여준다 (반려 사용자는 토큰이 없어 내 정보 조회를 못 한다)
     @Test
-    void 반려면_403_VERIFICATION_REJECTED와_반려_사유를_준다() throws Exception {
+    void 반려면_403_VERIFICATION_REJECTED와_반려_사유_닉네임을_준다() throws Exception {
         jdbcTemplate.update("""
             update users set verification_status = 'REJECTED', rejection_reason = '학번이 보이지 않아요'
             where student_id = ?
@@ -88,6 +92,7 @@ class LoginVerificationStatusIntegrationTest {
             .andExpect(status().isForbidden())
             .andExpect(jsonPath("$.code").value("VERIFICATION_REJECTED"))
             .andExpect(jsonPath("$.data.rejectionReason").value("학번이 보이지 않아요"))
+            .andExpect(jsonPath("$.data.nickname").value(nickname))
             .andExpect(jsonPath("$.data.requestedAt").doesNotExist());
     }
 

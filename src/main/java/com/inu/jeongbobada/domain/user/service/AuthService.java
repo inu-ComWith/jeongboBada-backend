@@ -119,14 +119,14 @@ public class AuthService {
         return issueTokens(user);
     }
 
-    // 승인 대기·반려면 토큰을 주지 않는다 (#142 4단계). 화면이 팝업에 보여줄 신청일·반려 사유를 함께 담는다
+    // 승인 대기·반려면 토큰을 주지 않는다 (#142 4단계). 화면이 팝업과 서류 다시 올리기 화면에 보여줄 신청일·반려 사유·닉네임을 함께 담는다
     private static void requireApproved(User user) {
         switch (user.getVerificationStatus()) {
             case APPROVED -> { }
             case PENDING -> throw new VerificationRequiredException(UserErrorCode.VERIFICATION_PENDING,
                 VerificationBlockedResponse.pending(user.getVerificationRequestedAt()));
             case REJECTED -> throw new VerificationRequiredException(UserErrorCode.VERIFICATION_REJECTED,
-                VerificationBlockedResponse.rejected(user.getRejectionReason()));
+                VerificationBlockedResponse.rejected(user.getRejectionReason(), user.getNickname()));
         }
     }
 
