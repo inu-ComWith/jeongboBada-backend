@@ -78,6 +78,18 @@ class SignupVerificationDocumentIntegrationTest {
         assertThat(user.getVerificationDocumentKey()).isEqualTo(DOCUMENT_KEY);
     }
 
+    // 닉네임 최대 10자: 검증뿐 아니라 DB 컬럼(length = 10)까지 저장되는지 확인한다
+    @Test
+    void 닉네임_10자로_가입할_수_있다() throws Exception {
+        doReturn(DOCUMENT_KEY).when(fileStorage).upload(any(), any(), any(), any());
+        String nickname = String.format("열글자닉네임%04d", n % 10_000);
+
+        mockMvc.perform(SignupRequests.signup(studentId, "password1", nickname, "vd" + n + "@example.com"))
+            .andExpect(status().isCreated());
+
+        assertThat(userRepository.findByStudentId(studentId).orElseThrow().getNickname()).isEqualTo(nickname);
+    }
+
     @Test
     void 서류_없이_가입하면_400_FILE_EMPTY이고_계정을_만들지_않는다() throws Exception {
         mockMvc.perform(multipart("/api/auth/signup")
