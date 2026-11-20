@@ -7,6 +7,7 @@ import com.inu.jeongbobada.global.common.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -26,10 +27,19 @@ public class ProfessorController implements ProfessorControllerDocs {
     }
 
     @Override
-    public ResponseEntity<ApiResponse<ProfessorDetailResponseDto>> getProfessorDetail(@PathVariable Long professorId) {
+    public ResponseEntity<ApiResponse<ProfessorDetailResponseDto>> getProfessorDetail(Long professorId) {
         ProfessorDetailResponseDto professorDetail = professorService.getProfessorDetail(professorId);
 
         ApiResponse<ProfessorDetailResponseDto> apiResponse = ApiResponse.ok(professorDetail);
+
+        return ResponseEntity.status(apiResponse.httpStatus()).body(apiResponse);
+    }
+
+    @Override
+    public ResponseEntity<ApiResponse<List<ProfessorListResponseDto>>> searchProfessorLists(String professorName) {
+        List<ProfessorListResponseDto> professorSearchLists = professorService.searchProfessorLists(professorName);
+
+        ApiResponse<List<ProfessorListResponseDto>> apiResponse = ApiResponse.ok(professorSearchLists);
 
         return ResponseEntity.status(apiResponse.httpStatus()).body(apiResponse);
     }
