@@ -42,8 +42,8 @@ class ValidationErrorFieldsIntegrationTest {
     }
 
     @Test
-    void 가입_닉네임은_6자_이하_한글_영문_숫자만_허용한다() throws Exception {
-        for (String nickname : new String[] {"일곱글자닉네임", "닉_네임"}) {
+    void 가입_닉네임은_10자_이하_한글_영문_숫자만_허용한다() throws Exception {
+        for (String nickname : new String[] {"가나다라마바사아자차카", "닉_네임"}) {
             mockMvc.perform(SignupRequests.signup("999999999", "password1", nickname, "nick@example.com"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors[*].field").value(containsInAnyOrder("nickname")));
@@ -52,7 +52,7 @@ class ValidationErrorFieldsIntegrationTest {
 
     @Test
     void 닉네임_변경도_가입과_같은_규칙을_적용한다() throws Exception {
-        for (String nickname : new String[] {"일곱글자닉네임", "닉_네임"}) {
+        for (String nickname : new String[] {"가나다라마바사아자차카", "닉_네임"}) {
             mockMvc.perform(patch("/api/users/me/nickname")
                     .with(user("tester"))
                     .contentType(MediaType.APPLICATION_JSON)
