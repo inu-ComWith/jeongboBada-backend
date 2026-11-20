@@ -96,4 +96,6 @@ public interface CourseOfferingRepository extends JpaRepository<CourseOffering, 
 
     List<CourseOffering> findAllByCourse_CourseIdAndActiveTrue(Long courseId);
 
+    boolean existsByCourse_CourseIdAndProfessor_ProfessorId(Long courseId, Long professorId);
+
 }

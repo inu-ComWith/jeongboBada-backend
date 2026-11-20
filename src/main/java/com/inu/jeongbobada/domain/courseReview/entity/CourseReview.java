@@ -71,7 +71,7 @@ public class CourseReview extends BaseEntity {
     @Column(name = "CONTENT", length = 1000, nullable = false)
     private String content;
 
-    // 조모임 유무
+    // 조모임 빈도
     @Enumerated(EnumType.STRING)
     @Column(name = "GROUP_ACTIVITY", nullable = false)
     private GroupActivity groupActivity;

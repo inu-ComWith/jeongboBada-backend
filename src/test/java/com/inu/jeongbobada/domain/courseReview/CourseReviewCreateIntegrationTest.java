@@ -2,7 +2,14 @@ package com.inu.jeongbobada.domain.courseReview;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.inu.jeongbobada.domain.course.entity.Course;
+import com.inu.jeongbobada.domain.course.entity.CourseOffering;
+import com.inu.jeongbobada.domain.course.enums.CourseType;
+import com.inu.jeongbobada.domain.course.enums.Credits;
+import com.inu.jeongbobada.domain.course.enums.EvaluationType;
+import com.inu.jeongbobada.domain.course.enums.Grade;
+import com.inu.jeongbobada.domain.course.enums.IsOnline;
 import com.inu.jeongbobada.domain.course.enums.Semester;
+import com.inu.jeongbobada.domain.course.repository.CourseOfferingRepository;
 import com.inu.jeongbobada.domain.course.repository.CourseRepository;
 import com.inu.jeongbobada.domain.courseReview.entity.CourseReview;
 import com.inu.jeongbobada.domain.courseReview.enums.AcademicYear;
@@ -70,7 +77,7 @@ class CourseReviewCreateIntegrationTest {
         {
           "rating": "FIVE",
           "content": "수정한 후기 내용이며 강의 설명과 실습이 모두 만족스러웠습니다.",
-          "groupActivity": "EXISTS",
+          "groupActivity": "ALWAYS",
           "attendance": "ROLL_CALL",
           "examCount": "ONE",
           "assignmentFrequency": "HIGH",
@@ -92,6 +99,9 @@ class CourseReviewCreateIntegrationTest {
     private CourseRepository courseRepository;
 
     @Autowired
+    private CourseOfferingRepository courseOfferingRepository;
+
+    @Autowired
     private ProfessorRepository professorRepository;
 
     @Autowired
@@ -103,6 +113,7 @@ class CourseReviewCreateIntegrationTest {
     private final List<String> additionalStudentIds = new ArrayList<>();
     private Course course;
     private Professor professor;
+    private CourseOffering offering;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -114,12 +125,16 @@ class CourseReviewCreateIntegrationTest {
 
         course = courseRepository.save(new Course("테스트과목", "T" + n, "테스트 과목 설명"));
         professor = professorRepository.save(new Professor(null, "테스트교수", "테스트 교수 설명", null, "200", "032-000-0000", "email@inu.ac.kr"));
+        offering = courseOfferingRepository.save(new CourseOffering(
+            course, professor, 2026, Semester.FIRST, Grade.SECOND, Credits.THIRD,
+            "월 1,2", CourseType.MAJOR_CORE, EvaluationType.RELATIVE, IsOnline.OFFLINE));
     }
 
     @AfterEach
     void cleanUp() {
         courseReviewRepository.deleteAll(
             courseReviewRepository.findAllByCourse_CourseIdOrderByCreatedAtDescReviewIdDesc(course.getCourseId()));
+        courseOfferingRepository.delete(offering);
         courseRepository.delete(course);
         professorRepository.delete(professor);
         userRepository.findByStudentId(studentId).ifPresent(userRepository::delete);
@@ -311,7 +326,7 @@ class CourseReviewCreateIntegrationTest {
         assertThat(updated.getRating().name()).isEqualTo("FIVE");
         assertThat(updated.getContent()).isEqualTo("수정한 후기 내용이며 강의 설명과 실습이 모두 만족스러웠습니다.");
         assertThat(updated.getProfessor().getProfessorId()).isEqualTo(professor.getProfessorId());
-        assertThat(updated.getGroupActivity().name()).isEqualTo("EXISTS");
+        assertThat(updated.getGroupActivity().name()).isEqualTo("ALWAYS");
         assertThat(updated.getAttendance().name()).isEqualTo("ROLL_CALL");
         assertThat(updated.getExamCount().name()).isEqualTo("ONE");
         assertThat(updated.getAssignmentFrequency().name()).isEqualTo("HIGH");

@@ -47,7 +47,7 @@ class SeedDataIntegrationTest {
             INSERT INTO course_review (user_id, course_id, professor_id, academic_year, semester,
                 like_count, rating, content, group_activity, attendance, exam_count,
                 assignment_frequency, quiz_frequency, grading_type, created_at, updated_at)
-            VALUES (?, 1, 1, 2026, 'FIRST', 0, 'ONE', '재시작해도 남아야 하는 후기',
+            VALUES (?, 1, 1, 'YEAR_2026', 'FIRST', 0, 'ONE', '재시작해도 남아야 하는 후기',
                 'NONE', 'ELECTRONIC', 'ZERO', 'NONE', 'NONE', 'VERY_GENEROUS', NOW(), NOW())
             """, userId);
 

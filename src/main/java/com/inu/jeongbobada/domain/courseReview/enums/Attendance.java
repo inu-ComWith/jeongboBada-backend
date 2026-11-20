@@ -4,5 +4,7 @@ public enum Attendance {
     NONE,
     ELECTRONIC,
     ROLL_CALL,
-    OTHER
+    ASSIGNMENT_OR_QUIZ,
+    ONLINE_RECORD,
+    MULTIPLE
 }

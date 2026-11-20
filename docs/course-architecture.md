@@ -58,11 +58,12 @@ CourseReview (후기 작성 당시 수강 정보)
 - `GET /api/courses` — **이번 학기 개설 강의(활성 CourseOffering) 기준으로 한 줄씩** 응답. `courseId`는 Course의 안정적인 id라서, 이 값으로 상세/후기 조회를 계속 이어갈 수 있다. (기존엔 목록 응답에 courseId가 아예 없던 버그가 있었음 — 이번에 같이 해결됨)
   - 선택 쿼리 파라미터 `keyword`로 강의명·교수명 부분 일치 검색. 검색어와 저장된 이름의 공백을 제거해 비교하고, 빈 검색어는 전체 목록을 반환한다.
 - `GET /api/courses/{courseId}` — Course 기본 정보 + 그 과목의 활성 `CourseOffering` 목록(교수/시간표/학점 등)을 함께 반환.
-- `POST /api/courses/{courseId}/reviews` — `academicYear`, `semester`는 작성자가 선택한 수강 시기로 후기에 저장한다. 개설 이력과 대조하지 않으며 후기 조회 필터나 중복 기준에도 사용하지 않는다.
+- `POST /api/courses/{courseId}/reviews` — `academicYear`, `semester`는 작성자가 선택한 수강 시기로 후기에 저장하고 개설 이력과 대조하지 않는다. 단, 엉뚱한 과목·교수 조합을 막기 위해 해당 교수가 과목을 담당한 이력은 확인한다. 연도·학기는 후기 조회 필터나 중복 기준에도 사용하지 않는다.
   - 로그인 필요 — `SecurityConfig`에서 **POST만** `authenticated()` (조회 GET은 공개). 컨트롤러 null 체크 대신 여기서 막아야 토큰 없는 잘못된 요청이 400이 아니라 401이 된다.
   - 요청 DTO(`ReviewCreateReqDto`)에 엔티티와 같은 필수·길이 검증 + `@Valid` → 누락 시 500이 아니라 400(`errors`에 필드) (#105).
   - 같은 `(user, course, professor)`로 이미 썼으면 수강 시기가 달라도 서비스 사전 확인에서 409 `DUPLICATE_COURSE_REVIEW`.
-  - 화면에 있는 평가 항목만 저장한다: 별점, 후기 내용, 학점 기준, 조모임 유무, 시험 횟수, 과제·퀴즈 빈도, 출결 방식.
+  - 화면에 있는 평가 항목만 저장한다: 별점, 후기 내용, 학점 기준, 조모임 빈도, 시험 횟수, 과제·퀴즈 빈도, 출결 방식.
+- `GET /api/courses/{courseId}/reviews/summary?professorId=` — 과목·교수별 후기 3개 이상이면 평점과 순서형 평가 항목의 평균·라벨을 반환한다. 출결은 최빈값이며 동률이면 `null`, 3개 미만이면 `summaryAvailable=false`다.
 
 ## 구현 상태
 
@@ -78,6 +79,7 @@ CourseReview (후기 작성 당시 수강 정보)
 - [x] 후기 작성 화면에 맞춰 평가 항목 단순화 및 후기 최대 길이 1000자로 변경
   - 기존 PostgreSQL 테이블은 [`scripts/db/course-review-form-migration.sql`](../scripts/db/course-review-form-migration.sql) 적용 필요. 기존 후기가 있으면 수강 시기를 임의 추정하지 않고 마이그레이션을 중단한다.
 - [x] 강의평 작성 요청 검증·중복 작성 409 (#105) — 통합 테스트 `CourseReviewCreateIntegrationTest`
+- [x] 교수별 강의평 요약 API — 평균·출결 최빈값·후기 3개 미만 미노출
 - [x] 엔티티 검증 실패(`ConstraintViolationException`)를 400 → 500으로 전환 (#139) — 입력 검증은 요청 DTO가 맡고, 엔티티 검증 실패는 서버 버그로 본다
 - [x] `data.sql`을 새 스키마(course + course_offering)로 재작성
 - [ ] 매 학기 엑셀(종합강의시간표) import 파이프라인 — courseCode로 Course 매칭, (course,professor,year,semester)로 CourseOffering upsert. **아직 미구현, 이번 작업 범위 밖.**

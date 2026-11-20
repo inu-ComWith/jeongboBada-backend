@@ -3,10 +3,18 @@ package com.inu.jeongbobada.domain.courseReview.service;
 import com.inu.jeongbobada.domain.courseReview.dto.request.ReviewCreateReqDto;
 import com.inu.jeongbobada.domain.courseReview.dto.request.ReviewUpdateReqDto;
 import com.inu.jeongbobada.domain.courseReview.dto.response.ReviewResDto;
+import com.inu.jeongbobada.domain.courseReview.dto.response.ReviewSummaryResDto;
 import com.inu.jeongbobada.domain.course.entity.Course;
 import com.inu.jeongbobada.domain.course.exception.CourseErrorCode;
+import com.inu.jeongbobada.domain.course.repository.CourseOfferingRepository;
 import com.inu.jeongbobada.domain.course.repository.CourseRepository;
 import com.inu.jeongbobada.domain.courseReview.entity.CourseReview;
+import com.inu.jeongbobada.domain.courseReview.enums.Attendance;
+import com.inu.jeongbobada.domain.courseReview.enums.ExamCount;
+import com.inu.jeongbobada.domain.courseReview.enums.Frequency;
+import com.inu.jeongbobada.domain.courseReview.enums.GradingType;
+import com.inu.jeongbobada.domain.courseReview.enums.GroupActivity;
+import com.inu.jeongbobada.domain.courseReview.enums.Rating;
 import com.inu.jeongbobada.domain.courseReview.enums.ReviewSort;
 import com.inu.jeongbobada.domain.courseReview.exception.CourseReviewErrorCode;
 import com.inu.jeongbobada.domain.courseReview.repository.CourseReviewRepository;
@@ -21,13 +29,19 @@ import com.inu.jeongbobada.global.exception.code.GlobalErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
+import java.util.function.ToIntFunction;
 
 @Service
 @RequiredArgsConstructor // 생성자 자동생성
 public class CourseReviewService {
+    private static final int SUMMARY_MIN_REVIEW_COUNT = 3;
+
     private final CourseReviewRepository courseReviewRepository;
     private final CourseRepository courseRepository;
+    private final CourseOfferingRepository courseOfferingRepository;
     private final ProfessorRepository professorRepository;
     private final UserRepository userRepository;
 
@@ -43,6 +57,13 @@ public class CourseReviewService {
 
         Professor professor = professorRepository.findById(request.professorId())
             .orElseThrow(() -> new BusinessException(ProfessorErrorCode.PROFESSOR_NOT_FOUND));
+
+        if (!courseOfferingRepository.existsByCourse_CourseIdAndProfessor_ProfessorId(
+            courseId,
+            professor.getProfessorId()
+        )) {
+            throw new BusinessException(CourseErrorCode.COURSE_OFFERING_NOT_FOUND);
+        }
 
         // 수강 시기는 후기 정보로만 저장한다. 같은 사람이 같은 과목·교수에 두 번 쓰는 것은 방지하고,
         // 확인과 저장 사이 동시 요청은
@@ -143,6 +164,168 @@ public class CourseReviewService {
                 review.getCreatedAt()
             ))
             .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public ReviewSummaryResDto getReviewSummary(Long courseId, Long professorId) {
+        if (!courseRepository.existsById(courseId)) {
+            throw new BusinessException(CourseErrorCode.COURSE_NOT_FOUND);
+        }
+        if (!professorRepository.existsById(professorId)) {
+            throw new BusinessException(ProfessorErrorCode.PROFESSOR_NOT_FOUND);
+        }
+
+        List<CourseReview> reviews = courseReviewRepository
+            .findAllByCourse_CourseIdAndProfessor_ProfessorId(courseId, professorId);
+
+        if (reviews.size() < SUMMARY_MIN_REVIEW_COUNT) {
+            return unavailableSummary(reviews.size());
+        }
+
+        double ratingAverage = average(reviews, review -> ratingScore(review.getRating()));
+        double gradingAverage = average(reviews, review -> gradingTypeScore(review.getGradingType()));
+        double groupActivityAverage = average(reviews, review -> groupActivityScore(review.getGroupActivity()));
+        double examCountAverage = average(reviews, review -> examCountScore(review.getExamCount()));
+        double assignmentAverage = average(reviews, review -> frequencyScore(review.getAssignmentFrequency()));
+        double quizAverage = average(reviews, review -> frequencyScore(review.getQuizFrequency()));
+
+        return new ReviewSummaryResDto(
+            reviews.size(),
+            true,
+            SUMMARY_MIN_REVIEW_COUNT,
+            ratingAverage,
+            gradingAverage,
+            gradingTypeFromScore(gradingAverage),
+            groupActivityAverage,
+            groupActivityFromScore(groupActivityAverage),
+            examCountAverage,
+            examCountFromScore(examCountAverage),
+            assignmentAverage,
+            frequencyFromScore(assignmentAverage),
+            quizAverage,
+            frequencyFromScore(quizAverage),
+            attendanceMode(reviews)
+        );
+    }
+
+    private static ReviewSummaryResDto unavailableSummary(long reviewCount) {
+        return new ReviewSummaryResDto(
+            reviewCount,
+            false,
+            SUMMARY_MIN_REVIEW_COUNT,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+        );
+    }
+
+    private static double average(List<CourseReview> reviews, ToIntFunction<CourseReview> score) {
+        double value = reviews.stream().mapToInt(score).average().orElse(0.0);
+        return Math.round(value * 10.0) / 10.0;
+    }
+
+    private static int ratingScore(Rating value) {
+        return switch (value) {
+            case ONE -> 1;
+            case TWO -> 2;
+            case THREE -> 3;
+            case FOUR -> 4;
+            case FIVE -> 5;
+        };
+    }
+
+    private static int gradingTypeScore(GradingType value) {
+        return switch (value) {
+            case VERY_STRICT -> 1;
+            case STRICT -> 2;
+            case NORMAL -> 3;
+            case GENEROUS -> 4;
+            case VERY_GENEROUS -> 5;
+        };
+    }
+
+    private static GradingType gradingTypeFromScore(double value) {
+        return switch ((int) Math.round(value)) {
+            case 1 -> GradingType.VERY_STRICT;
+            case 2 -> GradingType.STRICT;
+            case 3 -> GradingType.NORMAL;
+            case 4 -> GradingType.GENEROUS;
+            default -> GradingType.VERY_GENEROUS;
+        };
+    }
+
+    private static int groupActivityScore(GroupActivity value) {
+        return switch (value) {
+            case NONE -> 0;
+            case SOMETIMES -> 1;
+            case ALWAYS -> 2;
+        };
+    }
+
+    private static GroupActivity groupActivityFromScore(double value) {
+        return switch ((int) Math.round(value)) {
+            case 0 -> GroupActivity.NONE;
+            case 1 -> GroupActivity.SOMETIMES;
+            default -> GroupActivity.ALWAYS;
+        };
+    }
+
+    private static int examCountScore(ExamCount value) {
+        return switch (value) {
+            case ZERO -> 0;
+            case ONE -> 1;
+            case TWO -> 2;
+            case THREE_OR_MORE -> 3;
+        };
+    }
+
+    private static ExamCount examCountFromScore(double value) {
+        return switch ((int) Math.round(value)) {
+            case 0 -> ExamCount.ZERO;
+            case 1 -> ExamCount.ONE;
+            case 2 -> ExamCount.TWO;
+            default -> ExamCount.THREE_OR_MORE;
+        };
+    }
+
+    private static int frequencyScore(Frequency value) {
+        return switch (value) {
+            case NONE -> 0;
+            case LOW -> 1;
+            case NORMAL -> 2;
+            case HIGH -> 3;
+        };
+    }
+
+    private static Frequency frequencyFromScore(double value) {
+        return switch ((int) Math.round(value)) {
+            case 0 -> Frequency.NONE;
+            case 1 -> Frequency.LOW;
+            case 2 -> Frequency.NORMAL;
+            default -> Frequency.HIGH;
+        };
+    }
+
+    private static Attendance attendanceMode(List<CourseReview> reviews) {
+        Map<Attendance, Long> counts = new EnumMap<>(Attendance.class);
+        reviews.forEach(review -> counts.merge(review.getAttendance(), 1L, Long::sum));
+
+        long highestCount = counts.values().stream().mapToLong(Long::longValue).max().orElse(0L);
+        List<Attendance> mostSelected = counts.entrySet().stream()
+            .filter(entry -> entry.getValue() == highestCount)
+            .map(Map.Entry::getKey)
+            .toList();
+
+        return mostSelected.size() == 1 ? mostSelected.getFirst() : null;
     }
 
 

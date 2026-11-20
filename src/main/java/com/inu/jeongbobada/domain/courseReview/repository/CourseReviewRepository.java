@@ -19,6 +19,8 @@ public interface CourseReviewRepository extends JpaRepository<CourseReview, Long
         Long professorId
     );
 
+    List<CourseReview> findAllByCourse_CourseIdAndProfessor_ProfessorId(Long courseId, Long professorId);
+
     //  과목별 후기를 작성일 최신순으로 조회 작성일이 같으면 후기 ID 내림차순
 
     List<CourseReview> findAllByCourse_CourseIdOrderByCreatedAtDescReviewIdDesc(Long courseId);

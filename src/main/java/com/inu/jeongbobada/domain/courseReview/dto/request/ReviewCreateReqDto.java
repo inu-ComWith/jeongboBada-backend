@@ -27,7 +27,7 @@ public record ReviewCreateReqDto(
     @Size(min = 20, max = 1000, message = "후기 내용은 20자 이상 1000자 이하로 입력해주세요.")
     String content,
 
-    @NotNull(message = "조모임 여부를 선택해주세요.")
+    @NotNull(message = "조모임 빈도를 선택해주세요.")
     GroupActivity groupActivity,
 
     @NotNull(message = "출결 방식을 선택해주세요.")
