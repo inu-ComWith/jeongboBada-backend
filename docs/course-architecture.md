@@ -57,6 +57,7 @@ CourseReview (후기 작성 당시 수강 정보)
 
 - `GET /api/courses` — **이번 학기 개설 강의(활성 CourseOffering) 기준으로 한 줄씩** 응답. `courseId`는 Course의 안정적인 id라서, 이 값으로 상세/후기 조회를 계속 이어갈 수 있다. (기존엔 목록 응답에 courseId가 아예 없던 버그가 있었음 — 이번에 같이 해결됨)
   - 선택 쿼리 파라미터 `keyword`로 강의명·교수명 부분 일치 검색. 검색어와 저장된 이름의 공백을 제거해 비교하고, 빈 검색어는 전체 목록을 반환한다.
+  - `sort=name`(기본)은 과목명 오름차순, `sort=rating`은 `(course, professor)` 후기 평균 평점 내림차순으로 DB에서 정렬한 뒤 페이징한다. 평점이 같으면 과목명·교수명·개설 ID 순으로 정렬한다.
 - `GET /api/courses/{courseId}` — Course 기본 정보 + 그 과목의 활성 `CourseOffering` 목록(교수/시간표/학점 등)을 함께 반환.
 - `POST /api/courses/{courseId}/reviews` — `academicYear`, `semester`는 작성자가 선택한 수강 시기로 후기에 저장하고 개설 이력과 대조하지 않는다. 단, 엉뚱한 과목·교수 조합을 막기 위해 해당 교수가 과목을 담당한 이력은 확인한다. 연도·학기는 후기 조회 필터나 중복 기준에도 사용하지 않는다.
   - 로그인 필요 — `SecurityConfig`에서 **POST만** `authenticated()` (조회 GET은 공개). 컨트롤러 null 체크 대신 여기서 막아야 토큰 없는 잘못된 요청이 400이 아니라 401이 된다.
@@ -73,6 +74,7 @@ CourseReview (후기 작성 당시 수강 정보)
 - [x] `GET /api/courses?keyword=` — 강의명·교수명 부분 일치 검색(공백 무시, 최대 50자)
 - [x] `GET /api/courses?keyword=` — 강의명·교수명 초성 검색
 - [x] `GET /api/courses?page=&size=` — DB 페이징 및 `totalElements`, `totalPages`, `hasNext` 응답
+- [x] `GET /api/courses?sort=name|rating` — 과목명순(기본)·평균 평점순 정렬
 - [x] `CourseReview`에 `professor` FK 추가, unique 제약 `(user, course, professor)` 적용
 - [x] `POST .../reviews`에 `professorId` 검증 로직 추가 (컴파일/단위테스트만 확인, **실제 로그인 붙여서 수동 테스트는 아직 안 함**)
 - [x] 후기 작성 시 수강 연도·학기 검증 및 저장, 후기 조회 응답에 포함

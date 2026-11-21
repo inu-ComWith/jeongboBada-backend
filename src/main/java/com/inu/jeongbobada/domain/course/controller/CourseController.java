@@ -2,6 +2,7 @@ package com.inu.jeongbobada.domain.course.controller;
 import com.inu.jeongbobada.domain.course.dto.response.CoursePageResDto;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
 import com.inu.jeongbobada.domain.course.dto.response.CourseDetailResDto;
 import com.inu.jeongbobada.domain.course.service.CourseService;
 import com.inu.jeongbobada.global.common.ApiResponse;
@@ -25,6 +26,12 @@ public class CourseController {
         @RequestParam(defaultValue = "")
         @Size(max = 50, message = "검색어는 50자 이하여야 합니다.")
         String keyword,
+        @RequestParam(defaultValue = "name")
+        @Pattern(
+            regexp = "name|rating",
+            message = "정렬 기준은 name 또는 rating이어야 합니다."
+        )
+        String sort,
         @RequestParam(defaultValue = "0")
         // 상한이 없으면 page×size가 int 범위를 넘어 Spring Data가 예외를 던지고 500이 된다
         @Min(value = 0, message = "페이지 번호는 0 이상이어야 합니다.")
@@ -37,7 +44,7 @@ public class CourseController {
          int size
     ) {
         return ResponseEntity.ok(
-            ApiResponse.ok(courseService.getCourses(keyword, page, size))
+            ApiResponse.ok(courseService.getCourses(keyword, sort, page, size))
         );
     }
 

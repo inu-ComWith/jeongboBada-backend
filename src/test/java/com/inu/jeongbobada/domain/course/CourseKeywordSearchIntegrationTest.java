@@ -10,8 +10,19 @@ import com.inu.jeongbobada.domain.course.enums.IsOnline;
 import com.inu.jeongbobada.domain.course.enums.Semester;
 import com.inu.jeongbobada.domain.course.repository.CourseOfferingRepository;
 import com.inu.jeongbobada.domain.course.repository.CourseRepository;
+import com.inu.jeongbobada.domain.courseReview.entity.CourseReview;
+import com.inu.jeongbobada.domain.courseReview.enums.AcademicYear;
+import com.inu.jeongbobada.domain.courseReview.enums.Attendance;
+import com.inu.jeongbobada.domain.courseReview.enums.ExamCount;
+import com.inu.jeongbobada.domain.courseReview.enums.Frequency;
+import com.inu.jeongbobada.domain.courseReview.enums.GradingType;
+import com.inu.jeongbobada.domain.courseReview.enums.GroupActivity;
+import com.inu.jeongbobada.domain.courseReview.enums.Rating;
+import com.inu.jeongbobada.domain.courseReview.repository.CourseReviewRepository;
 import com.inu.jeongbobada.domain.professor.entity.Professor;
 import com.inu.jeongbobada.domain.professor.repository.ProfessorRepository;
+import com.inu.jeongbobada.domain.user.entity.User;
+import com.inu.jeongbobada.domain.user.repository.UserRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,6 +58,12 @@ class CourseKeywordSearchIntegrationTest {
 
     @Autowired
     private CourseOfferingRepository courseOfferingRepository;
+
+    @Autowired
+    private CourseReviewRepository courseReviewRepository;
+
+    @Autowired
+    private UserRepository userRepository;
 
     private Course course;
     private Course inactiveCourse;
@@ -235,6 +252,72 @@ class CourseKeywordSearchIntegrationTest {
     }
 
     @Test
+    void 평점순을_선택하면_평균_평점_내림차순으로_정렬한다() throws Exception {
+        List<Course> courses = courseRepository.saveAll(List.of(
+            new Course("가나다 평점정렬 " + uniqueSuffix, "RATING-A-" + uniqueSuffix, "평점순 테스트"),
+            new Course("데이터 평점정렬 " + uniqueSuffix, "RATING-D-" + uniqueSuffix, "평점순 테스트"),
+            new Course("사물 평점정렬 " + uniqueSuffix, "RATING-S-" + uniqueSuffix, "평점순 테스트")
+        ));
+        List<CourseOffering> offerings = courseOfferingRepository.saveAll(
+            courses.stream()
+                .map(sortedCourse -> new CourseOffering(
+                    sortedCourse, professor, 2026, Semester.FIRST, Grade.SECOND, Credits.THIRD,
+                    "목 1,2", CourseType.MAJOR_CORE, EvaluationType.RELATIVE, IsOnline.OFFLINE
+                ))
+                .toList()
+        );
+        User reviewer = userRepository.save(User.create(
+            "7" + uniqueSuffix,
+            "encoded-password",
+            "정렬" + professorSuffix,
+            "정보통신공학과",
+            "sort" + uniqueSuffix + "@example.com",
+            "test-document-key"
+        ));
+        User otherReviewer = userRepository.save(User.create(
+            "6" + uniqueSuffix,
+            "encoded-password",
+            "정렬보" + professorSuffix,
+            "정보통신공학과",
+            "other-sort" + uniqueSuffix + "@example.com",
+            "test-document-key"
+        ));
+        List<CourseReview> reviews = courseReviewRepository.saveAll(List.of(
+            review(reviewer, courses.get(0), Rating.ONE),
+            review(reviewer, courses.get(1), Rating.FIVE),
+            review(reviewer, courses.get(2), Rating.THREE),
+            review(otherReviewer, courses.get(0), Rating.FIVE),
+            review(otherReviewer, courses.get(1), Rating.FIVE),
+            review(otherReviewer, courses.get(2), Rating.THREE)
+        ));
+
+        try {
+            mockMvc.perform(get("/api/courses")
+                    .param("keyword", "평점정렬" + uniqueSuffix)
+                    .param("sort", "rating")
+                    .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.courses[*].courseName", contains(
+                    "데이터 평점정렬 " + uniqueSuffix,
+                    "가나다 평점정렬 " + uniqueSuffix,
+                    "사물 평점정렬 " + uniqueSuffix
+                )));
+        } finally {
+            courseReviewRepository.deleteAll(reviews);
+            courseOfferingRepository.deleteAll(offerings);
+            courseRepository.deleteAll(courses);
+            userRepository.deleteAll(List.of(reviewer, otherReviewer));
+        }
+    }
+
+    @Test
+    void 잘못된_정렬_기준이면_400을_반환한다() throws Exception {
+        mockMvc.perform(get("/api/courses").param("sort", "unknown"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"));
+    }
+
+    @Test
     void 페이지_번호나_크기가_범위를_벗어나면_400을_반환한다() throws Exception {
         mockMvc.perform(get("/api/courses").param("page", "-1"))
             .andExpect(status().isBadRequest())
@@ -256,5 +339,23 @@ class CourseKeywordSearchIntegrationTest {
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.code").value("INVALID_INPUT_VALUE"))
             .andExpect(jsonPath("$.errors[0].field").value("keyword"));
+    }
+
+    private CourseReview review(User reviewer, Course reviewCourse, Rating rating) {
+        return new CourseReview(
+            reviewer,
+            reviewCourse,
+            professor,
+            AcademicYear.YEAR_2026,
+            Semester.FIRST,
+            rating,
+            "평점 정렬 통합 테스트를 위한 충분히 긴 후기 내용입니다.",
+            GroupActivity.SOMETIMES,
+            Attendance.ELECTRONIC,
+            ExamCount.TWO,
+            Frequency.NORMAL,
+            Frequency.LOW,
+            GradingType.GENEROUS
+        );
     }
 }
