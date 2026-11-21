@@ -26,23 +26,25 @@ public class CourseService {
 
 
     // 과목 리스트 전체 조회 (이번 학기 개설된 강의 기준)
-    public CoursePageResDto getCourses(String keyword, int page, int size) {
+    public CoursePageResDto getCourses(String keyword, String sort, int page, int size) {
         String normalizedKeyword = keyword.replaceAll("\\s+", "");
         PageRequest pageable = PageRequest.of(page, size);
 
         Page<CourseOffering> offeringPage;
 
         if (normalizedKeyword.isEmpty()) {
-            offeringPage = courseOfferingRepository.findAllActive(pageable);
+            offeringPage = courseOfferingRepository.findAllActive(sort, pageable);
         } else if (isInitialConsonantKeyword(normalizedKeyword)) {
             String initialPattern = toInitialConsonantPattern(normalizedKeyword);
             offeringPage = courseOfferingRepository.searchActiveByInitialConsonant(
                 initialPattern,
+                sort,
                 pageable
             );
         } else {
             offeringPage = courseOfferingRepository.searchActiveByKeyword(
                 escapeLikeWildcards(normalizedKeyword),
+                sort,
                 pageable
             );
         }

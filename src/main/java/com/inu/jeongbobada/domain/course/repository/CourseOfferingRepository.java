@@ -18,7 +18,19 @@ public interface CourseOfferingRepository extends JpaRepository<CourseOffering, 
             join fetch offering.course course
             join fetch offering.professor professor
             where offering.active = true
-            order by collate(course.courseName as ucs_basic) asc,
+            order by case when :sort = 'rating' then (
+                         select coalesce(avg(case review.rating
+                             when com.inu.jeongbobada.domain.courseReview.enums.Rating.ONE then 1.0
+                             when com.inu.jeongbobada.domain.courseReview.enums.Rating.TWO then 2.0
+                             when com.inu.jeongbobada.domain.courseReview.enums.Rating.THREE then 3.0
+                             when com.inu.jeongbobada.domain.courseReview.enums.Rating.FOUR then 4.0
+                             when com.inu.jeongbobada.domain.courseReview.enums.Rating.FIVE then 5.0
+                         end), 0.0)
+                         from CourseReview review
+                         where review.course = course
+                           and review.professor = professor
+                     ) end desc,
+                     collate(course.courseName as ucs_basic) asc,
                      collate(professor.professorName as ucs_basic) asc,
                      offering.courseOfferingId asc
             """,
@@ -28,7 +40,10 @@ public interface CourseOfferingRepository extends JpaRepository<CourseOffering, 
             where offering.active = true
             """
     )
-    Page<CourseOffering> findAllActive(Pageable pageable);
+    Page<CourseOffering> findAllActive(
+        @Param("sort") String sort,
+        Pageable pageable
+    );
 
     @Query(
         value = """
@@ -41,7 +56,19 @@ public interface CourseOfferingRepository extends JpaRepository<CourseOffering, 
                 replace(course.courseName, ' ', '') like concat('%', :keyword, '%') escape '\\'
                 or replace(professor.professorName, ' ', '') like concat('%', :keyword, '%') escape '\\'
               )
-            order by collate(course.courseName as ucs_basic) asc,
+            order by case when :sort = 'rating' then (
+                         select coalesce(avg(case review.rating
+                             when com.inu.jeongbobada.domain.courseReview.enums.Rating.ONE then 1.0
+                             when com.inu.jeongbobada.domain.courseReview.enums.Rating.TWO then 2.0
+                             when com.inu.jeongbobada.domain.courseReview.enums.Rating.THREE then 3.0
+                             when com.inu.jeongbobada.domain.courseReview.enums.Rating.FOUR then 4.0
+                             when com.inu.jeongbobada.domain.courseReview.enums.Rating.FIVE then 5.0
+                         end), 0.0)
+                         from CourseReview review
+                         where review.course = course
+                           and review.professor = professor
+                     ) end desc,
+                     collate(course.courseName as ucs_basic) asc,
                      collate(professor.professorName as ucs_basic) asc,
                      offering.courseOfferingId asc
             """,
@@ -59,6 +86,7 @@ public interface CourseOfferingRepository extends JpaRepository<CourseOffering, 
     )
     Page<CourseOffering> searchActiveByKeyword(
         @Param("keyword") String keyword,
+        @Param("sort") String sort,
         Pageable pageable
     );
 
@@ -73,7 +101,19 @@ public interface CourseOfferingRepository extends JpaRepository<CourseOffering, 
                 regexp_like(replace(course.courseName, ' ', ''), :initialPattern)
                 or regexp_like(replace(professor.professorName, ' ', ''), :initialPattern)
               )
-            order by collate(course.courseName as ucs_basic) asc,
+            order by case when :sort = 'rating' then (
+                         select coalesce(avg(case review.rating
+                             when com.inu.jeongbobada.domain.courseReview.enums.Rating.ONE then 1.0
+                             when com.inu.jeongbobada.domain.courseReview.enums.Rating.TWO then 2.0
+                             when com.inu.jeongbobada.domain.courseReview.enums.Rating.THREE then 3.0
+                             when com.inu.jeongbobada.domain.courseReview.enums.Rating.FOUR then 4.0
+                             when com.inu.jeongbobada.domain.courseReview.enums.Rating.FIVE then 5.0
+                         end), 0.0)
+                         from CourseReview review
+                         where review.course = course
+                           and review.professor = professor
+                     ) end desc,
+                     collate(course.courseName as ucs_basic) asc,
                      collate(professor.professorName as ucs_basic) asc,
                      offering.courseOfferingId asc
             """,
@@ -91,12 +131,12 @@ public interface CourseOfferingRepository extends JpaRepository<CourseOffering, 
     )
     Page<CourseOffering> searchActiveByInitialConsonant(
         @Param("initialPattern") String initialPattern,
+        @Param("sort") String sort,
         Pageable pageable
     );
 
     List<CourseOffering> findAllByCourse_CourseIdAndActiveTrue(Long courseId);
 
-    // 같은 과목·교수 조합은 학기마다 한 건씩 개설될 수 있어서 한 건만 꺼내면 두 학기째부터 500이 난다 (#161).
-    // 후기 작성은 개설한 적이 있는지만 필요하므로 존재 여부로 묻는다
     boolean existsByCourse_CourseIdAndProfessor_ProfessorId(Long courseId, Long professorId);
+
 }
