@@ -38,6 +38,15 @@ import java.util.function.ToIntFunction;
 @RequiredArgsConstructor // 생성자 자동생성
 public class CourseReviewService {
     private static final int SUMMARY_MIN_REVIEW_COUNT = 3;
+    // 출결 최빈값이 동률이면 화면에 표시되는 한글 이름의 가나다순으로 선택한다.
+    private static final List<Attendance> ATTENDANCE_TIE_BREAK_ORDER = List.of(
+        Attendance.ASSIGNMENT_OR_QUIZ, // 과제 및 퀴즈로 확인
+        Attendance.MULTIPLE,           // 여러 방식 병행
+        Attendance.ONLINE_RECORD,      // 온라인 수강 기록
+        Attendance.ELECTRONIC,         // 전자출결
+        Attendance.ROLL_CALL,          // 직접 호명
+        Attendance.NONE                // 출결 확인 없음
+    );
 
     private final CourseReviewRepository courseReviewRepository;
     private final CourseRepository courseRepository;
@@ -325,7 +334,10 @@ public class CourseReviewService {
             .map(Map.Entry::getKey)
             .toList();
 
-        return mostSelected.size() == 1 ? mostSelected.getFirst() : null;
+        return ATTENDANCE_TIE_BREAK_ORDER.stream()
+            .filter(mostSelected::contains)
+            .findFirst()
+            .orElseThrow();
     }
 
 

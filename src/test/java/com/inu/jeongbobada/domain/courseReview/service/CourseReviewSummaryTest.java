@@ -75,7 +75,7 @@ class CourseReviewSummaryTest {
     }
 
     @Test
-    void 출결_최빈값이_동률이면_null을_반환한다() {
+    void 출결_최빈값이_동률이면_한글_이름의_가나다순으로_반환한다() {
         stubExistingCourseAndProfessor();
         List<CourseReview> reviewList = List.of(
             defaultReview(Attendance.ELECTRONIC),
@@ -85,7 +85,8 @@ class CourseReviewSummaryTest {
         );
         when(reviews.findAllByCourse_CourseIdAndProfessor_ProfessorId(1L, 2L)).thenReturn(reviewList);
 
-        assertThat(service.getReviewSummary(1L, 2L).attendance()).isNull();
+        assertThat(service.getReviewSummary(1L, 2L).attendance())
+            .isEqualTo(Attendance.ELECTRONIC);
     }
 
     private void stubExistingCourseAndProfessor() {

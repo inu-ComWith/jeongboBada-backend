@@ -63,7 +63,7 @@ CourseReview (후기 작성 당시 수강 정보)
   - 요청 DTO(`ReviewCreateReqDto`)에 엔티티와 같은 필수·길이 검증 + `@Valid` → 누락 시 500이 아니라 400(`errors`에 필드) (#105).
   - 같은 `(user, course, professor)`로 이미 썼으면 수강 시기가 달라도 서비스 사전 확인에서 409 `DUPLICATE_COURSE_REVIEW`.
   - 화면에 있는 평가 항목만 저장한다: 별점, 후기 내용, 학점 기준, 조모임 빈도, 시험 횟수, 과제·퀴즈 빈도, 출결 방식.
-- `GET /api/courses/{courseId}/reviews/summary?professorId=` — 과목·교수별 후기 3개 이상이면 평점과 순서형 평가 항목의 평균·라벨을 반환한다. 출결은 최빈값이며 동률이면 `null`, 3개 미만이면 `summaryAvailable=false`다.
+- `GET /api/courses/{courseId}/reviews/summary?professorId=` — 과목·교수별 후기 3개 이상이면 평점과 순서형 평가 항목의 평균·라벨을 반환한다. 출결은 최빈값이며 동률이면 한글 표시명의 가나다순으로 선택한다. 3개 미만이면 `summaryAvailable=false`다.
 
 ## 구현 상태
 
